@@ -105,8 +105,22 @@ uv run uvicorn personae.main:app --port 8100 --ws websockets-sansio   # backend
 PERSONAE_BACKEND=http://127.0.0.1:8100 npm run dev                    # frontend
 ```
 
-To use real services, set `DEEPGRAM_API_KEY` and your LLM endpoint in `.env` and switch the
-provider settings from `mock` to `live`.
+To use real services, copy `.env.example` to `.env`, add your keys, and switch the relevant
+mode from `mock` to `live`:
+
+```bash
+PERSONAE_STT_MODE=live
+PERSONAE_TTS_MODE=live
+PERSONAE_DEEPGRAM_API_KEY=your-key
+
+PERSONAE_LLM_MODE=live
+PERSONAE_LLM_BASE_URL=https://api.openai.com/v1
+PERSONAE_LLM_API_KEY=your-key
+```
+
+Modes are independent, so you can run live speech against a mock language model, or the
+reverse. A missing credential fails at startup naming the variable, rather than surfacing on
+someone's first utterance.
 
 ### Docker
 
@@ -140,7 +154,7 @@ for every push and pull request.
 - [x] Mock provider implementations
 - [x] WebSocket session protocol
 - [ ] Vertical slice: browser mic → backend → audio playback
-- [ ] Deepgram STT/TTS and LLM providers
+- [x] Deepgram STT/TTS and LLM providers
 - [x] Gesture and emotion inference (vocabulary-constrained)
 - [ ] Avatar rendering and lip-sync
 

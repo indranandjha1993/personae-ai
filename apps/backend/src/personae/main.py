@@ -10,7 +10,8 @@ from starlette.websockets import WebSocketDisconnect
 
 from personae.packs.loader import CharacterRegistry, load_packs
 from personae.protocol import AudioFrame, ServerMessage
-from personae.providers.mock import MockLlm, MockStt, MockTts
+from personae.providers.base import LlmProvider, SttProvider, TtsProvider
+from personae.providers.factory import build_llm, build_stt, build_tts
 from personae.session import MalformedMessageError, Session, decode
 from personae.settings import Settings
 
@@ -37,6 +38,9 @@ class AppState(TypedDict):
 
     settings: Settings
     characters: CharacterRegistry
+    stt: SttProvider
+    llm: LlmProvider
+    tts: TtsProvider
 
 
 @asynccontextmanager
@@ -48,7 +52,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[AppState]:
     """
     settings = Settings()
     characters = load_packs(REPO_ROOT / path for path in settings.pack_search_paths)
-    yield {"settings": settings, "characters": characters}
+    # Built here so a missing credential fails the boot rather than the first
+    # utterance of whoever happens to connect first.
+    yield {
+        "settings": settings,
+        "characters": characters,
+        "stt": build_stt(settings),
+        "llm": build_llm(settings),
+        "tts": build_tts(settings),
+    }
 
 
 def create_app() -> FastAPI:
@@ -106,7 +118,7 @@ def create_app() -> FastAPI:
             return
 
         await socket.accept()
-        turn = Session(persona, MockStt(), MockLlm(), MockTts())
+        turn = Session(persona, socket.state.stt, socket.state.llm, socket.state.tts)
         try:
             await _drive(socket, turn)
         except WebSocketDisconnect:

@@ -10,6 +10,8 @@ dependencies = [
     "pydantic>=2.13.5,<3",
     "pydantic-settings>=2.15.0,<3",
     "websockets>=17.1,<18",
+    "deepgram-sdk>=7.8,<8",
+    "httpx>=0.28",
 ]
 
 [dependency-groups]
