@@ -94,14 +94,15 @@ export function Avatar({
           : box.max.y * 0.93
         onFramed({ headY, height: box.max.y - box.min.y })
 
-        // Rest the arms once, out of the loaded T-pose. They are mostly out of
-        // shot, but a stray hand at the edge of a close crop is worse than none.
-        const rest = (name: 'leftUpperArm' | 'rightUpperArm', z: number) => {
+        // Collapse the arms instead of posing them. Rest poses differ between
+        // models -- a rotation that lowers one model's arms raises another's --
+        // and a portrait has no use for them. Scaling the bone works where
+        // hiding it does not, because skinned meshes follow skeleton matrices
+        // rather than the bone hierarchy's visibility.
+        for (const name of ['leftUpperArm', 'rightUpperArm'] as const) {
           const bone = loaded.humanoid.getNormalizedBoneNode(name)
-          if (bone) bone.rotation.z = z
+          if (bone) bone.scale.setScalar(0.001)
         }
-        rest('leftUpperArm', 1.4)
-        rest('rightUpperArm', -1.4)
         setVrm(loaded)
       },
       () => {
