@@ -3,67 +3,40 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import './styles.css'
 import { useConversation } from './useConversation'
 
-// The 3D stack is roughly two thirds of the bundle. Loading it separately keeps
-// the first paint fast and costs nothing for anyone without a model.
+// The 3D stack is most of the bundle, so it loads on demand.
 const AvatarStage = lazy(() =>
   import('./avatar/AvatarStage').then((module) => ({ default: module.AvatarStage })),
 )
 
-interface CharacterSummary {
+interface Character {
   id: string
   display_name: string
-  theme: { primary: string; secondary: string }
-  expression: { gestures: string[]; emotions: string[] }
 }
 
 export function App() {
-  const [characters, setCharacters] = useState<CharacterSummary[]>([])
-  const [selected, setSelected] = useState<string | null>(null)
+  const [character, setCharacter] = useState<Character | null>(null)
   const [loadError, setLoadError] = useState('')
 
   useEffect(() => {
     const controller = new AbortController()
     fetch('/api/characters', { signal: controller.signal })
       .then((response) => (response.ok ? response.json() : Promise.reject(new Error('failed'))))
-      .then((body: { characters: CharacterSummary[] }) => {
-        setCharacters(body.characters)
-        setSelected(body.characters[0]?.id ?? null)
+      .then((body: { characters: Character[] }) => {
+        setCharacter(body.characters[0] ?? null)
       })
       .catch((error: unknown) => {
         if (error instanceof Error && error.name === 'AbortError') return
-        setLoadError('Could not load characters. Is the backend running?')
+        setLoadError('Could not reach the backend.')
       })
     return () => { controller.abort() }
   }, [])
 
-  const active = characters.find((character) => character.id === selected)
-
   return (
     <main>
       <h1>Personae AI</h1>
-      <p className="tagline">Pick a voice, then talk to it.</p>
-
+      <p className="tagline">Speak, and she answers aloud.</p>
       {loadError !== '' && <p className="alert" role="alert">{loadError}</p>}
-
-      <ul className="characters" aria-label="Characters">
-        {characters.map((character) => (
-          <li key={character.id}>
-            <button
-              type="button"
-              className="character"
-              aria-pressed={selected === character.id}
-              style={{ '--dot': character.theme.primary } as React.CSSProperties}
-              onClick={() => { setSelected(character.id) }}
-            >
-              {character.display_name}
-            </button>
-          </li>
-        ))}
-      </ul>
-
-      {active && (
-        <Conversation key={active.id} characterId={active.id} />
-      )}
+      {character && <Conversation characterId={character.id} />}
     </main>
   )
 }
@@ -75,7 +48,7 @@ function Conversation({ characterId }: { characterId: string }) {
 
   return (
     <section className="panel" aria-label="Conversation">
-      <Suspense fallback={<div className="stage stage--empty">Loading avatar…</div>}>
+      <Suspense fallback={<div className="stage" />}>
         <AvatarStage
           gesture={gesture}
           emotion={emotion}
@@ -113,10 +86,6 @@ function Conversation({ characterId }: { characterId: string }) {
           {reply}
         </p>
       )}
-
-      <p className="cues">
-        Gesture: {gesture} · Emotion: {emotion}
-      </p>
     </section>
   )
 }

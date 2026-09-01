@@ -53,7 +53,7 @@ def characters() -> object:
 async def test_each_character_speaks_at_its_own_rate(characters: object) -> None:
     """Characters declare distinct rates; a shared default flattens them."""
     tts = RecordingTts()
-    character = characters.get("bundled/armored-inventor")  # type: ignore[attr-defined]
+    character = characters.get("bundled/seed")  # type: ignore[attr-defined]
     session = Session(character, StubStt(), StubLlm(), tts)
     await session.offer(AudioFrame(type="audio", pcm=base64.b64encode(b"\x10\x20" * 40).decode()))
     await session.close_input()
@@ -66,12 +66,11 @@ async def test_each_character_speaks_at_its_own_rate(characters: object) -> None
     assert rate == character.voice.rate
 
 
-def test_bundled_characters_declare_distinct_voices(characters: object) -> None:
-    voices = {
-        characters.get(cid).voice.provider_voice  # type: ignore[attr-defined]
-        for cid in characters.ids()  # type: ignore[attr-defined]
-    }
-    assert len(voices) > 1, "characters should not all share one voice"
+def test_every_character_declares_a_voice_and_rate(characters: object) -> None:
+    for cid in characters.ids():  # type: ignore[attr-defined]
+        voice = characters.get(cid).voice  # type: ignore[attr-defined]
+        assert voice.provider_voice
+        assert voice.rate > 0
 
 
 def test_server_message_types_are_stable() -> None:

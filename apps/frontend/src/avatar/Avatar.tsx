@@ -87,10 +87,13 @@ export function Avatar({
         // Normalises VRM 0.x orientation; VRM 1.0 already faces the camera.
         VRMUtils.rotateVRM0(loaded)
 
-        // Recommended by the official example: a close crop otherwise culls
-        // geometry whose bounding volume falls outside the frustum.
         loaded.scene.traverse((object) => {
+          // A close crop otherwise culls geometry whose bounding volume falls
+          // outside the frustum.
           object.frustumCulled = false
+          // Props and limbs that intrude on a portrait. Matching by name keeps
+          // the clothing intact, which a bounds test does not.
+          if (/robo|arm|hand/i.test(object.name)) object.visible = false
         })
 
         loaded.scene.updateMatrixWorld(true)
@@ -167,9 +170,12 @@ export function Avatar({
       expressions.setValue('ih', visemes.ih)
       expressions.setValue('ou', visemes.ou)
 
+      // Emotion morphs on many models also close the eyes -- this one's
+      // 'happy' is a closed-eye smile -- so a full-weight expression leaves
+      // the character squinting through the whole conversation.
+      const emotionWeight = activity === 'thinking' ? 0.35 : 0.55
       for (const preset of ['happy', 'angry', 'sad', 'relaxed', 'surprised'] as const) {
-        const held = activity === 'thinking' ? 0.5 : 0.85
-        expressions.setValue(preset, preset === vrmEmotion ? held : 0)
+        expressions.setValue(preset, preset === vrmEmotion ? emotionWeight : 0)
       }
 
       if (clock.current > nextBlink.current) {
@@ -178,7 +184,10 @@ export function Avatar({
           clock.current + (2.2 + Math.random() * 3.4) / Math.max(pose.blinkRate, 0.2)
       }
       blink.current = damp(blink.current, 0, 16, delta)
-      expressions.setValue('blink', blink.current)
+      // Blinking on top of an expression that already narrows the eyes shuts
+      // them completely, so the two are not allowed to stack.
+      const eyesAlreadyNarrowed = vrmEmotion !== 'neutral' ? emotionWeight : 0
+      expressions.setValue('blink', Math.max(0, blink.current - eyesAlreadyNarrowed))
 
       // Gaze morphs distort the eyes past low weights, so the head carries
       // most of the movement and the eyes only hint at it.

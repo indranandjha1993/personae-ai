@@ -34,45 +34,8 @@ h1 {
   color: var(--muted);
 }
 
-.characters {
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  margin: 0 0 2rem;
-  padding: 0;
-}
-
-.character {
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text);
-  border-radius: 999px;
-  padding: 0.5rem 1rem;
-  font: inherit;
-  cursor: pointer;
-  transition: border-color 120ms ease, background 120ms ease;
-}
-
-.character:hover { border-color: var(--muted); }
-
-.character:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
 /* Selection is shown by more than colour, so it survives colour-blindness
    and greyscale. */
-.character[aria-pressed='true'] {
-  border-color: var(--dot, var(--accent));
-  background: color-mix(in srgb, var(--dot, var(--accent)) 16%, var(--surface));
-  font-weight: 600;
-}
-
-.character[aria-pressed='true']::before {
-  content: '● ';
-  color: var(--dot, var(--accent));
-}
 
 .panel {
   border: 1px solid var(--border);
@@ -146,14 +109,6 @@ h1 {
   color: #fca5a5;
 }
 
-.cues {
-  margin: 1.25rem 0 0;
-  padding-top: 1rem;
-  border-top: 1px solid var(--border);
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
 .stage {
   /* Portrait proportions: the face fills the frame rather than floating in it. */
   height: 20rem;
@@ -162,7 +117,7 @@ h1 {
   margin: 0;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: radial-gradient(circle at 50% 30%, #1e2430 0%, #12151c 70%);
+  background: radial-gradient(ellipse at 50% 38%, #232a3a 0%, #141822 55%, #0d1016 100%);
   overflow: hidden;
 }
 
@@ -189,37 +144,7 @@ h1 {
   padding: 0.05rem 0.3rem;
 }
 
-.stage-title { margin: 0; font-weight: 600; }
-
-.stage-hint {
-  margin: 0;
-  max-width: 30rem;
-  color: var(--muted);
-  font-size: 0.88rem;
-  line-height: 1.5;
-}
-
-.stage-hint code {
-  background: #0d1016;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.1rem 0.35rem;
-  font-size: 0.85em;
-}
-
-.stage-cue {
-  margin: 0.25rem 0 0;
-  color: var(--muted);
-  font-size: 0.85rem;
-}
-
 .stage-wrap { margin: 0 0 1.25rem; }
-
-
-
-
-
-
 
 .model-credit {
   margin: 0.5rem 0 0;

@@ -4,13 +4,13 @@ from personae.expression import infer
 from personae.packs.loader import load_packs
 from personae.packs.models import Character
 
-INVENTOR = "bundled/armored-inventor"
+SEED = "bundled/seed"
 
 
 def _character() -> Character:
     from personae.main import REPO_ROOT
 
-    return load_packs([REPO_ROOT / "packs" / "bundled"]).get(INVENTOR)
+    return load_packs([REPO_ROOT / "packs" / "bundled"]).get(SEED)
 
 
 def test_always_returns_values_from_the_character_vocabulary() -> None:

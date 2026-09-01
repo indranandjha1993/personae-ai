@@ -37,7 +37,7 @@ def test_rejects_an_unknown_character(client: TestClient) -> None:
 
 
 def test_speech_produces_transcript_reply_expression_and_audio(client: TestClient) -> None:
-    with client.websocket_connect("/ws/session/bundled/armored-inventor") as socket:
+    with client.websocket_connect("/ws/session/bundled/seed") as socket:
         socket.send_json({"type": "audio", "pcm": SPEECH})
         socket.send_json({"type": "stop"})
         kinds = [message["type"] for message in _collect(socket)]
@@ -51,18 +51,18 @@ def test_speech_produces_transcript_reply_expression_and_audio(client: TestClien
 
 def test_expression_is_drawn_from_the_character_vocabulary(client: TestClient) -> None:
     """The backend must never emit a cue the frontend cannot perform."""
-    with client.websocket_connect("/ws/session/bundled/armored-inventor") as socket:
+    with client.websocket_connect("/ws/session/bundled/seed") as socket:
         socket.send_json({"type": "audio", "pcm": SPEECH})
         socket.send_json({"type": "stop"})
         messages = _collect(socket)
 
     expression = next(m for m in messages if m["type"] == "expression")
-    assert expression["gesture"] in {"idle", "gesture-explain", "gesture-point", "gesture-dismiss"}
-    assert expression["emotion"] in {"neutral", "amused", "focused", "impatient"}
+    assert expression["gesture"] in {"idle", "gesture-explain", "gesture-point", "gesture-consider"}
+    assert expression["emotion"] in {"neutral", "amused", "focused", "alert"}
 
 
 def test_malformed_message_yields_an_error_not_a_crash(client: TestClient) -> None:
-    with client.websocket_connect("/ws/session/bundled/armored-inventor") as socket:
+    with client.websocket_connect("/ws/session/bundled/seed") as socket:
         socket.receive_json()  # ready
         socket.send_json({"type": "audio", "pcm": "not base64!!"})
         message = socket.receive_json()
@@ -70,7 +70,7 @@ def test_malformed_message_yields_an_error_not_a_crash(client: TestClient) -> No
 
 
 def test_non_json_payload_is_rejected_cleanly(client: TestClient) -> None:
-    with client.websocket_connect("/ws/session/bundled/armored-inventor") as socket:
+    with client.websocket_connect("/ws/session/bundled/seed") as socket:
         socket.receive_json()  # ready
         socket.send_text("<not json>")
         message = socket.receive_json()
@@ -78,7 +78,7 @@ def test_non_json_payload_is_rejected_cleanly(client: TestClient) -> None:
 
 
 def test_silence_produces_no_transcript(client: TestClient) -> None:
-    with client.websocket_connect("/ws/session/bundled/armored-inventor") as socket:
+    with client.websocket_connect("/ws/session/bundled/seed") as socket:
         socket.send_json({"type": "audio", "pcm": "AAAAAAAAAAAAAAAAAAAAAA=="})
         socket.send_json({"type": "stop"})
         kinds = [message["type"] for message in _collect(socket)]
@@ -92,6 +92,6 @@ def test_session_announces_the_audio_format_before_sending_audio(client: TestCli
     Playing the samples at the wrong rate shifts pitch and speed, and a
     constant duplicated across two languages will eventually disagree.
     """
-    with client.websocket_connect("/ws/session/bundled/armored-inventor") as socket:
+    with client.websocket_connect("/ws/session/bundled/seed") as socket:
         first = socket.receive_json()
     assert first == {"type": "ready", "sample_rate": 24000, "channels": 1}
