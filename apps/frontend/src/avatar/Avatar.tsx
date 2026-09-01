@@ -24,9 +24,6 @@ import {
 
 const SMOOTHING = 9
 
-/** Half-width of the portrait, as a fraction of body height. */
-const PORTRAIT_HALF_WIDTH = 0.14
-
 /** How far each emotion opens or closes the posture, for models without blendshapes. */
 const EMOTION_POSTURE: Record<string, number> = {
   happy: 1,
@@ -102,20 +99,7 @@ export function Avatar({
         const headY = headNode
           ? new THREE.Vector3().setFromMatrixPosition(headNode.matrixWorld).y
           : box.max.y * 0.93
-        const height = box.max.y - box.min.y
-
-        // Hide meshes that sit outside the portrait rather than matching on
-        // names: shoulder pieces belong to the clothing mesh, and every model
-        // names its parts differently.
-        const limit = height * PORTRAIT_HALF_WIDTH
-        loaded.scene.traverse((object) => {
-          if (!(object instanceof THREE.Mesh)) return
-          const bounds = new THREE.Box3().setFromObject(object)
-          const reach = Math.max(Math.abs(bounds.min.x), Math.abs(bounds.max.x))
-          if (reach > limit) object.visible = false
-        })
-
-        onFramed({ headY, height })
+        onFramed({ headY, height: box.max.y - box.min.y })
         setVrm(loaded)
       },
       () => {
@@ -196,9 +180,10 @@ export function Avatar({
       blink.current = damp(blink.current, 0, 16, delta)
       expressions.setValue('blink', blink.current)
 
-      // Eyes lead the head, which is what makes looking away read as thinking.
-      expressions.setValue('lookLeft', Math.max(0, s.yaw) * 2)
-      expressions.setValue('lookRight', Math.max(0, -s.yaw) * 2)
+      // Gaze morphs distort the eyes past low weights, so the head carries
+      // most of the movement and the eyes only hint at it.
+      expressions.setValue('lookLeft', Math.min(0.3, Math.max(0, s.yaw)))
+      expressions.setValue('lookRight', Math.min(0.3, Math.max(0, -s.yaw)))
     }
 
     vrm.update(delta)

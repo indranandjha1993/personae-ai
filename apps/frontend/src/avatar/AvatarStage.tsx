@@ -29,8 +29,8 @@ function FrameFace({ bounds }: { bounds: Bounds | null }) {
   useEffect(() => {
     if (!bounds) return
     // Eyes sit above the head bone; a portrait wants them above centre.
-    const focusY = bounds.headY + bounds.height * 0.035
-    camera.position.set(0, focusY, bounds.height * 0.46)
+    const focusY = bounds.headY + bounds.height * 0.055
+    camera.position.set(0, focusY, bounds.height * 0.34)
     camera.lookAt(new THREE.Vector3(0, focusY, 0))
     camera.updateProjectionMatrix()
   }, [bounds, camera])
