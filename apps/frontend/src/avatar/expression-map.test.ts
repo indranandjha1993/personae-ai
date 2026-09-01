@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { mouthOpenness, toPose, toVrmEmotion, VISEMES } from './expression-map'
+import { ACTIVITY_POSE, mouthOpenness, toPose, toVrmEmotion, VISEMES } from './expression-map'
 
 describe('toVrmEmotion', () => {
   it('maps character emotions onto VRM presets', () => {
@@ -50,5 +50,31 @@ describe('mouthOpenness', () => {
   it('exposes the VRM viseme names', () => {
     expect(VISEMES).toContain('aa')
     expect(VISEMES).toHaveLength(5)
+  })
+})
+
+describe('ACTIVITY_POSE', () => {
+  it('makes thinking visibly different from listening', () => {
+    // A character that looks identical while waiting and while working reads as
+    // frozen rather than considering.
+    expect(ACTIVITY_POSE.thinking).not.toEqual(ACTIVITY_POSE.listening)
+    expect(Math.abs(ACTIVITY_POSE.thinking.headYaw)).toBeGreaterThan(
+      Math.abs(ACTIVITY_POSE.listening.headYaw),
+    )
+  })
+
+  it('holds stiller while listening than while idle', () => {
+    expect(ACTIVITY_POSE.listening.sway).toBeLessThan(ACTIVITY_POSE.idle.sway)
+  })
+
+  it('leans in to listen and away to think', () => {
+    expect(ACTIVITY_POSE.listening.lean).toBeGreaterThan(0)
+    expect(ACTIVITY_POSE.thinking.lean).toBeLessThan(ACTIVITY_POSE.listening.lean)
+  })
+
+  it('covers every activity the conversation can report', () => {
+    for (const activity of ['idle', 'listening', 'thinking', 'speaking', 'error'] as const) {
+      expect(ACTIVITY_POSE[activity]).toBeDefined()
+    }
   })
 })

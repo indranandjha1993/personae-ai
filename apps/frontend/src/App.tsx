@@ -84,6 +84,7 @@ function Conversation({ characterId, accent }: { characterId: string; accent: st
           accent={accent}
           gesture={gesture}
           emotion={emotion}
+          activity={status}
           loudness={loudness}
         />
       </Suspense>

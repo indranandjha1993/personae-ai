@@ -12,6 +12,40 @@ export type VrmEmotion = 'neutral' | 'happy' | 'angry' | 'sad' | 'relaxed' | 'su
 /** VRM 1.0 viseme presets, driven by audio amplitude rather than phonemes. */
 export const VISEMES = ['aa', 'ih', 'ou', 'ee', 'oh'] as const
 
+/**
+ * What the character is doing right now, independent of the reply's content.
+ *
+ * Conversation has a rhythm: attentive while listening, visibly considering
+ * while the model works, animated while speaking. Without this the character
+ * only reacts after a reply lands, which reads as a lag rather than a pause.
+ */
+export type Activity = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error'
+
+export interface ActivityPose {
+  /** Radians the head tilts; positive looks up, negative looks down. */
+  headPitch: number
+  /** Radians the head turns aside, as when thinking. */
+  headYaw: number
+  /** How much the body leans in. */
+  lean: number
+  /** Blink interval multiplier; lower blinks more often. */
+  blinkRate: number
+  /** Idle sway amplitude, so attention reads as stillness. */
+  sway: number
+}
+
+export const ACTIVITY_POSE: Record<Activity, ActivityPose> = {
+  // Relaxed, gently moving.
+  idle: { headPitch: 0, headYaw: 0, lean: 0, blinkRate: 1, sway: 1 },
+  // Attentive: head up and slightly forward, very still.
+  listening: { headPitch: -0.06, headYaw: 0, lean: 0.09, blinkRate: 1.4, sway: 0.35 },
+  // Considering: eyes off to one side, head tipped, almost motionless.
+  thinking: { headPitch: 0.13, headYaw: 0.26, lean: -0.05, blinkRate: 0.55, sway: 0.5 },
+  // Engaged while talking.
+  speaking: { headPitch: -0.03, headYaw: 0, lean: 0.05, blinkRate: 1, sway: 0.8 },
+  error: { headPitch: 0.08, headYaw: 0, lean: -0.04, blinkRate: 1, sway: 0.6 },
+}
+
 const EMOTION_TO_VRM: Record<string, VrmEmotion> = {
   neutral: 'neutral',
   amused: 'happy',

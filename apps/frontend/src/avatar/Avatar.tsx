@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 
-import { mouthOpenness, toPose, toVrmEmotion } from './expression-map'
+import { ACTIVITY_POSE, mouthOpenness, toPose, toVrmEmotion, type Activity } from './expression-map'
 
 /** Frame-rate independent smoothing; higher converges faster. */
 const SMOOTHING = 9
@@ -34,6 +34,8 @@ export interface AvatarProps {
   modelUrl: string
   gesture: string
   emotion: string
+  /** What the character is doing, so it can listen and think visibly. */
+  activity: Activity
   /** Returns current playback loudness, 0 when silent. */
   loudness: () => number
   onError: (message: string) => void
@@ -45,13 +47,24 @@ export function Avatar({
   modelUrl,
   gesture,
   emotion,
+  activity,
   loudness,
   onError,
   onFramed,
 }: AvatarProps) {
   const [vrm, setVrm] = useState<VRM | null>(null)
-  const current = useRef({ armSwing: 0, headTilt: 0, torsoTwist: 0, mouth: 0 })
+  const current = useRef({
+    armSwing: 0,
+    headTilt: 0,
+    torsoTwist: 0,
+    mouth: 0,
+    pitch: 0,
+    yaw: 0,
+    lean: 0,
+  })
   const clock = useRef(0)
+  const nextBlink = useRef(2)
+  const blink = useRef(0)
 
   useEffect(() => {
     let cancelled = false
@@ -103,6 +116,7 @@ export function Avatar({
     const state = current.current
     const damp = THREE.MathUtils.damp
     const vrmEmotion = toVrmEmotion(emotion)
+    const activityPose = ACTIVITY_POSE[activity]
     // Emotion is also expressed as posture, so it still reads on models with no
     // emotion blendshapes: lifted and open when positive, closed and lowered
     // when negative.
@@ -113,9 +127,16 @@ export function Avatar({
     state.torsoTwist = damp(state.torsoTwist, target.torsoTwist, SMOOTHING, delta)
     // The mouth chases loudness faster than the body moves, or speech looks dubbed.
     state.mouth = damp(state.mouth, mouthOpenness(loudness()), SMOOTHING * 2.2, delta)
+    // Activity moves more slowly than speech: a head turning to think should
+    // look deliberate, not twitchy.
+    state.pitch = damp(state.pitch, activityPose.headPitch, SMOOTHING * 0.55, delta)
+    state.yaw = damp(state.yaw, activityPose.headYaw, SMOOTHING * 0.55, delta)
+    state.lean = damp(state.lean, activityPose.lean, SMOOTHING * 0.55, delta)
 
     const humanoid = vrm.humanoid
-    const breath = Math.sin(clock.current * 1.6) * 0.02
+    const breath = Math.sin(clock.current * 1.6) * 0.02 * activityPose.sway
+    // A slow drift while thinking, as though following a train of thought.
+    const drift = activity === 'thinking' ? Math.sin(clock.current * 0.9) * 0.05 : 0
 
     // A VRM loads in T-pose with the arms straight out. Roughly 70 degrees of
     // downward rotation gives a natural rest; gestures move from there.
@@ -138,14 +159,18 @@ export function Avatar({
 
     const head = humanoid.getNormalizedBoneNode('head')
     if (head) {
-      head.rotation.x = state.headTilt + breath * 0.5 - lift * 0.12
-      head.rotation.y = state.torsoTwist * 0.6
+      head.rotation.x = state.headTilt + state.pitch + breath * 0.5 - lift * 0.12
+      head.rotation.y = state.torsoTwist * 0.6 + state.yaw + drift
+      head.rotation.z = state.yaw * 0.25
     }
+
+    const neck = humanoid.getNormalizedBoneNode('neck')
+    if (neck) neck.rotation.x = state.pitch * 0.35
 
     const spine = humanoid.getNormalizedBoneNode('spine')
     if (spine) {
       spine.rotation.y = state.torsoTwist
-      spine.rotation.x = breath - lift * 0.06
+      spine.rotation.x = breath - lift * 0.06 + state.lean * 0.4
     }
 
     const expressions = vrm.expressionManager
@@ -156,10 +181,28 @@ export function Avatar({
 
       // Many models -- including most VRM 0.x avatars -- ship visemes but no
       // emotion presets. Setting a missing one is silently ignored, so posture
-      // below carries the emotion for those models.
+      // also carries the emotion for those models.
       for (const preset of ['happy', 'angry', 'sad', 'relaxed', 'surprised'] as const) {
-        expressions.setValue(preset, preset === vrmEmotion ? 0.85 : 0)
+        // Hold a little expression while thinking, so the face is not blank
+        // during the pause before a reply.
+        const weight = preset === vrmEmotion ? (activity === 'thinking' ? 0.5 : 0.85) : 0
+        expressions.setValue(preset, weight)
       }
+
+      // Blinking is what separates a character from a mannequin. The rate
+      // varies with activity: slower while concentrating, brisker while idle.
+      if (clock.current > nextBlink.current) {
+        blink.current = 1
+        nextBlink.current =
+          clock.current + (2.2 + Math.random() * 3.4) / Math.max(activityPose.blinkRate, 0.2)
+      }
+      blink.current = damp(blink.current, 0, 16, delta)
+      expressions.setValue('blink', blink.current)
+
+      // Eyes lead the head when thinking, which is what makes it read as
+      // considering rather than merely looking away.
+      expressions.setValue('lookLeft', Math.max(0, state.yaw) * 2)
+      expressions.setValue('lookRight', Math.max(0, -state.yaw) * 2)
     }
 
     vrm.update(delta)

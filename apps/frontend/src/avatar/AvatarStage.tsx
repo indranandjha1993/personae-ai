@@ -12,12 +12,14 @@ import * as THREE from 'three'
 
 import { Avatar } from './Avatar'
 import { FallbackFigure } from './FallbackFigure'
+import { type Activity } from './expression-map'
 import { BUILT_IN, findAvailableModels, type ModelChoice } from './models'
 
 export interface AvatarStageProps {
   accent: string
   gesture: string
   emotion: string
+  activity: Activity
   loudness: () => number
 }
 
@@ -49,7 +51,13 @@ function FrameCamera({ bounds }: { bounds: Bounds | null }) {
   return null
 }
 
-export function AvatarStage({ accent, gesture, emotion, loudness }: AvatarStageProps) {
+export function AvatarStage({
+  accent,
+  gesture,
+  emotion,
+  activity,
+  loudness,
+}: AvatarStageProps) {
   const [available, setAvailable] = useState<ModelChoice[]>([])
   const [selected, setSelected] = useState<ModelChoice>(BUILT_IN)
   const [bounds, setBounds] = useState<Bounds | null>(null)
@@ -89,6 +97,7 @@ export function AvatarStage({ accent, gesture, emotion, loudness }: AvatarStageP
                 modelUrl={selected.url}
                 gesture={gesture}
                 emotion={emotion}
+                activity={activity}
                 loudness={loudness}
                 onError={handleError}
                 onFramed={handleFramed}
@@ -98,6 +107,7 @@ export function AvatarStage({ accent, gesture, emotion, loudness }: AvatarStageP
                 accent={accent}
                 gesture={gesture}
                 emotion={emotion}
+                activity={activity}
                 loudness={loudness}
               />
             )}

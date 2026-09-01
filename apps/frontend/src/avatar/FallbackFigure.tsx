@@ -11,7 +11,7 @@ import { useFrame } from '@react-three/fiber'
 import { useMemo, useRef } from 'react'
 import * as THREE from 'three'
 
-import { mouthOpenness, toPose, toVrmEmotion } from './expression-map'
+import { ACTIVITY_POSE, mouthOpenness, toPose, toVrmEmotion, type Activity } from './expression-map'
 
 const SMOOTHING = 9
 
@@ -29,10 +29,17 @@ export interface FallbackFigureProps {
   accent: string
   gesture: string
   emotion: string
+  activity: Activity
   loudness: () => number
 }
 
-export function FallbackFigure({ accent, gesture, emotion, loudness }: FallbackFigureProps) {
+export function FallbackFigure({
+  accent,
+  gesture,
+  emotion,
+  activity,
+  loudness,
+}: FallbackFigureProps) {
   const head = useRef<THREE.Group>(null)
   const torso = useRef<THREE.Group>(null)
   const leftArm = useRef<THREE.Group>(null)
@@ -41,7 +48,15 @@ export function FallbackFigure({ accent, gesture, emotion, loudness }: FallbackF
   const leftEye = useRef<THREE.Mesh>(null)
   const rightEye = useRef<THREE.Mesh>(null)
 
-  const state = useRef({ armSwing: 0, headTilt: 0, torsoTwist: 0, mouth: 0, blink: 0 })
+  const state = useRef({
+    armSwing: 0,
+    headTilt: 0,
+    torsoTwist: 0,
+    mouth: 0,
+    blink: 0,
+    pitch: 0,
+    yaw: 0,
+  })
   const clock = useRef(0)
   const nextBlink = useRef(2)
 
@@ -54,24 +69,30 @@ export function FallbackFigure({ accent, gesture, emotion, loudness }: FallbackF
     const s = state.current
     const target = toPose(gesture)
     const damp = THREE.MathUtils.damp
+    const pose = ACTIVITY_POSE[activity]
 
     s.armSwing = damp(s.armSwing, target.armSwing, SMOOTHING, delta)
     s.headTilt = damp(s.headTilt, target.headTilt, SMOOTHING, delta)
     s.torsoTwist = damp(s.torsoTwist, target.torsoTwist, SMOOTHING, delta)
     // The mouth tracks loudness faster than the body moves, or speech looks dubbed.
     s.mouth = damp(s.mouth, mouthOpenness(loudness()), SMOOTHING * 2.2, delta)
+    // Activity moves deliberately, more slowly than speech.
+    s.pitch = damp(s.pitch, pose.headPitch, SMOOTHING * 0.55, delta)
+    s.yaw = damp(s.yaw, pose.headYaw, SMOOTHING * 0.55, delta)
 
     // Idle motion: without it a still figure reads as broken rather than waiting.
-    const breath = Math.sin(now * 1.5) * 0.03
-    const sway = Math.sin(now * 0.7) * 0.04
+    const breath = Math.sin(now * 1.5) * 0.03 * pose.sway
+    const sway = Math.sin(now * 0.7) * 0.04 * pose.sway
+    const drift = activity === 'thinking' ? Math.sin(now * 0.9) * 0.06 : 0
 
     if (torso.current) {
       torso.current.rotation.y = s.torsoTwist + sway
       torso.current.position.y = breath * 0.5
     }
     if (head.current) {
-      head.current.rotation.x = s.headTilt + breath
-      head.current.rotation.y = s.torsoTwist * 0.7 + sway * 0.5
+      head.current.rotation.x = s.headTilt + s.pitch + breath
+      head.current.rotation.y = s.torsoTwist * 0.7 + sway * 0.5 + s.yaw + drift
+      head.current.rotation.z = s.yaw * 0.3
     }
     if (leftArm.current) leftArm.current.rotation.z = 0.25 + s.armSwing
     if (rightArm.current) rightArm.current.rotation.z = -0.25 - s.armSwing
@@ -84,7 +105,7 @@ export function FallbackFigure({ accent, gesture, emotion, loudness }: FallbackF
     // Occasional blink, so the face does not stare.
     if (now > nextBlink.current) {
       s.blink = 1
-      nextBlink.current = now + 2.5 + Math.random() * 3
+      nextBlink.current = now + (2.2 + Math.random() * 3.4) / Math.max(pose.blinkRate, 0.2)
     }
     s.blink = damp(s.blink, 0, 14, delta)
     const eyeScale = 1 - s.blink * 0.9
