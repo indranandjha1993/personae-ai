@@ -168,10 +168,11 @@ export function Avatar({
       // the eyes shut while talking.
       expressions.setValue('aa', s.mouth)
 
-      // Emotion morphs on many models also close the eyes -- this one's
-      // 'happy' is a closed-eye smile -- so a full-weight expression leaves
-      // the character squinting through the whole conversation.
-      const emotionWeight = activity === 'thinking' ? 0.35 : 0.55
+      // 'happy' and 'relaxed' are authored as closed-eye expressions on many
+      // models, so they are held well below full weight; the others reshape
+      // only the brow and mouth and can run stronger.
+      const closesEyes = vrmEmotion === 'happy' || vrmEmotion === 'relaxed'
+      const emotionWeight = closesEyes ? 0.3 : 0.6
       for (const preset of ['happy', 'angry', 'sad', 'relaxed', 'surprised'] as const) {
         expressions.setValue(preset, preset === vrmEmotion ? emotionWeight : 0)
       }
@@ -182,10 +183,10 @@ export function Avatar({
           clock.current + (2.2 + Math.random() * 3.4) / Math.max(pose.blinkRate, 0.2)
       }
       blink.current = damp(blink.current, 0, 16, delta)
-      // Blinking on top of an expression that already narrows the eyes shuts
-      // them completely, so the two are not allowed to stack.
-      const eyesAlreadyNarrowed = vrmEmotion !== 'neutral' ? emotionWeight : 0
-      expressions.setValue('blink', Math.max(0, blink.current - eyesAlreadyNarrowed))
+      // An expression that already narrows the eyes must not also blink, or
+      // they close entirely.
+      const narrowed = closesEyes ? emotionWeight : 0
+      expressions.setValue('blink', Math.max(0, blink.current - narrowed))
 
       // Gaze morphs distort the eyes past low weights, so the head carries
       // most of the movement and the eyes only hint at it.
