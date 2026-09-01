@@ -54,21 +54,31 @@ def infer(text: str, character: Character) -> tuple[str, str]:
     return gesture, emotion
 
 
+# A spoken reply is typically one or two sentences; thresholds tuned to longer
+# text leave almost everything at rest.
+_SUBSTANTIAL = 24
+
+
 def _shape_gesture(text: str, allowed: tuple[str, ...]) -> str:
-    """Fall back to sentence shape when no keyword matched."""
+    """Fall back to sentence shape when no keyword matched.
+
+    Only genuinely short utterances rest. Anything a person would actually say
+    aloud gets a gesture, otherwise the avatar stands motionless through most
+    of the conversation.
+    """
     stripped = text.strip()
-    if not stripped:
+    if len(stripped) < _SUBSTANTIAL:
         return allowed[0]
     if stripped.endswith("?"):
         return _prefer(("gesture-point", "gesture-consider", "gesture-indicate"), allowed)
-    if len(stripped) > 90:
+    if len(stripped) > 90 or stripped.count(".") > 1:
         return _prefer(("gesture-explain", "gesture-declaim"), allowed)
-    return allowed[0]
+    return _prefer(("gesture-indicate", "gesture-explain", "gesture-welcome"), allowed)
 
 
 def _shape_emotion(text: str, allowed: tuple[str, ...]) -> str:
     stripped = text.strip()
-    if not stripped:
+    if len(stripped) < _SUBSTANTIAL:
         return allowed[0]
     if "!" in stripped:
         return _prefer(("amused", "delighted", "indignant"), allowed)
@@ -76,7 +86,7 @@ def _shape_emotion(text: str, allowed: tuple[str, ...]) -> str:
         return _prefer(("focused", "alert", "wry"), allowed)
     if len(stripped) > 90:
         return _prefer(("focused", "solemn"), allowed)
-    return allowed[0]
+    return _prefer(("focused", "alert", "wry", "amused"), allowed)
 
 
 def _prefer(candidates: tuple[str, ...], allowed: tuple[str, ...]) -> str:
