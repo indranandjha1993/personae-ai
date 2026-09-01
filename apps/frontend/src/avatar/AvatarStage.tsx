@@ -1,10 +1,9 @@
 /**
- * The avatar viewport.
+ * The avatar viewport and its model picker.
  *
- * A VRM model is a large licensed binary, so none is committed. Rather than
- * showing an empty box until someone supplies one, a procedural figure is drawn
- * by default and the VRM takes over automatically when a model is present. Both
- * are driven by the same cues, so the conversation looks alive either way.
+ * Models are large licensed binaries and are not committed, so the viewport
+ * always has a procedural figure to fall back on and only offers the models
+ * actually present on disk.
  */
 
 import { Canvas, useThree } from '@react-three/fiber'
@@ -13,9 +12,7 @@ import * as THREE from 'three'
 
 import { Avatar } from './Avatar'
 import { FallbackFigure } from './FallbackFigure'
-
-/** Served from public/, which is gitignored for models. */
-const MODEL_URL = '/avatar.vrm'
+import { BUILT_IN, findAvailableModels, type ModelChoice } from './models'
 
 export interface AvatarStageProps {
   accent: string
@@ -23,8 +20,6 @@ export interface AvatarStageProps {
   emotion: string
   loudness: () => number
 }
-
-type ModelState = 'checking' | 'present' | 'absent'
 
 interface Bounds {
   headY: number
@@ -46,8 +41,7 @@ function FrameCamera({ bounds }: { bounds: Bounds | null }) {
     // Aim just below the head: the face carries the expression, and a little
     // chest keeps the gestures visible.
     const focusY = bounds.headY - bounds.height * 0.16
-    const distance = bounds.height * 1.15
-    camera.position.set(0, focusY, distance)
+    camera.position.set(0, focusY, bounds.height * 1.15)
     camera.lookAt(new THREE.Vector3(0, focusY, 0))
     camera.updateProjectionMatrix()
   }, [bounds, camera])
@@ -56,60 +50,81 @@ function FrameCamera({ bounds }: { bounds: Bounds | null }) {
 }
 
 export function AvatarStage({ accent, gesture, emotion, loudness }: AvatarStageProps) {
-  const [model, setModel] = useState<ModelState>('checking')
+  const [available, setAvailable] = useState<ModelChoice[]>([])
+  const [selected, setSelected] = useState<ModelChoice>(BUILT_IN)
   const [bounds, setBounds] = useState<Bounds | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
-    // A HEAD request avoids downloading tens of megabytes just to find out
-    // whether a model exists.
-    fetch(MODEL_URL, { method: 'HEAD', signal: controller.signal })
-      .then((response) => {
-        const type = response.headers.get('content-type') ?? ''
-        // A dev server happily returns index.html for a missing file, so a 200
-        // alone is not proof that a model is there.
-        setModel(response.ok && !type.includes('text/html') ? 'present' : 'absent')
+    findAvailableModels(controller.signal)
+      .then((models) => {
+        setAvailable(models)
+        // Prefer a real model when one is installed; the built-in figure is a
+        // fallback, not the intended experience.
+        const first = models[0]
+        if (first) setSelected(first)
       })
-      .catch(() => { setModel('absent') })
+      .catch(() => { setAvailable([]) })
     return () => { controller.abort() }
   }, [])
 
-  const handleError = useCallback(() => { setModel('absent') }, [])
+  const handleError = useCallback(() => { setSelected(BUILT_IN) }, [])
   const handleFramed = useCallback((measured: Bounds) => { setBounds(measured) }, [])
 
+  const choices = [...available, BUILT_IN]
+  const usingModel = selected.url !== ''
+
   return (
-    <div className="stage">
-      <Canvas camera={{ position: [0, 1.35, 1.9], fov: 32 }}>
-        <FrameCamera bounds={model === 'present' ? bounds : null} />
-        <ambientLight intensity={1.6} />
-        <directionalLight position={[2, 3, 2]} intensity={1.8} />
-        <directionalLight position={[-2, 1, -1]} intensity={0.5} color="#8fa3bf" />
-        <Suspense fallback={null}>
-          {model === 'present' ? (
-            <Avatar
-              modelUrl={MODEL_URL}
-              gesture={gesture}
-              emotion={emotion}
-              loudness={loudness}
-              onError={handleError}
-              onFramed={handleFramed}
-            />
-          ) : (
-            <FallbackFigure
-              accent={accent}
-              gesture={gesture}
-              emotion={emotion}
-              loudness={loudness}
-            />
-          )}
-        </Suspense>
-      </Canvas>
-      {model === 'absent' && (
-        <p className="stage-note">
-          Using the built-in figure. Drop a <code>.vrm</code> at{' '}
-          <code>apps/frontend/public/avatar.vrm</code> for a full 3D character.
-        </p>
+    <div className="stage-wrap">
+      <div className="stage">
+        <Canvas camera={{ position: [0, 1.35, 1.9], fov: 32 }}>
+          <FrameCamera bounds={usingModel ? bounds : null} />
+          <ambientLight intensity={1.6} />
+          <directionalLight position={[2, 3, 2]} intensity={1.8} />
+          <directionalLight position={[-2, 1, -1]} intensity={0.5} color="#8fa3bf" />
+          <Suspense fallback={null}>
+            {usingModel ? (
+              <Avatar
+                key={selected.id}
+                modelUrl={selected.url}
+                gesture={gesture}
+                emotion={emotion}
+                loudness={loudness}
+                onError={handleError}
+                onFramed={handleFramed}
+              />
+            ) : (
+              <FallbackFigure
+                accent={accent}
+                gesture={gesture}
+                emotion={emotion}
+                loudness={loudness}
+              />
+            )}
+          </Suspense>
+        </Canvas>
+      </div>
+
+      {choices.length > 1 && (
+        <div className="models" role="group" aria-label="Avatar model">
+          {choices.map((choice) => (
+            <button
+              key={choice.id}
+              type="button"
+              className="model"
+              aria-pressed={selected.id === choice.id}
+              title={choice.credit}
+              onClick={() => {
+                setBounds(null)
+                setSelected(choice)
+              }}
+            >
+              {choice.name}
+            </button>
+          ))}
+        </div>
       )}
+      <p className="model-credit">{selected.credit}</p>
     </div>
   )
 }

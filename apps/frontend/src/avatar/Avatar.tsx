@@ -17,6 +17,9 @@ import { mouthOpenness, toPose, toVrmEmotion } from './expression-map'
 /** Frame-rate independent smoothing; higher converges faster. */
 const SMOOTHING = 9
 
+/** Radians the upper arms rest below horizontal, out of the loaded T-pose. */
+const ARM_REST = 1.25
+
 /** How much each emotion opens or closes the posture, when blendshapes are absent. */
 const EMOTION_POSTURE: Record<string, number> = {
   happy: 1,
@@ -114,10 +117,24 @@ export function Avatar({
     const humanoid = vrm.humanoid
     const breath = Math.sin(clock.current * 1.6) * 0.02
 
+    // A VRM loads in T-pose with the arms straight out. Roughly 70 degrees of
+    // downward rotation gives a natural rest; gestures move from there.
     const leftArm = humanoid.getNormalizedBoneNode('leftUpperArm')
     const rightArm = humanoid.getNormalizedBoneNode('rightUpperArm')
-    if (leftArm) leftArm.rotation.z = 1.2 - state.armSwing - lift * 0.15
-    if (rightArm) rightArm.rotation.z = -1.2 + state.armSwing + lift * 0.15
+    if (leftArm) {
+      leftArm.rotation.z = ARM_REST - state.armSwing - lift * 0.12
+      leftArm.rotation.x = state.armSwing * 0.35
+    }
+    if (rightArm) {
+      rightArm.rotation.z = -ARM_REST + state.armSwing + lift * 0.12
+      rightArm.rotation.x = state.armSwing * 0.35
+    }
+
+    // Bending the forearms keeps the silhouette from reading as a mannequin.
+    const leftLower = humanoid.getNormalizedBoneNode('leftLowerArm')
+    const rightLower = humanoid.getNormalizedBoneNode('rightLowerArm')
+    if (leftLower) leftLower.rotation.y = -0.3 - state.armSwing * 0.5
+    if (rightLower) rightLower.rotation.y = 0.3 + state.armSwing * 0.5
 
     const head = humanoid.getNormalizedBoneNode('head')
     if (head) {

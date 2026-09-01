@@ -5,3 +5,4 @@ coverage/
 
 # Avatar models are large and carry their own licences; supply your own.
 public/*.vrm
+public/models/*.vrm
