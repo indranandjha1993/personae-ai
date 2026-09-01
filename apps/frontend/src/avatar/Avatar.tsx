@@ -94,14 +94,14 @@ export function Avatar({
           : box.max.y * 0.93
         onFramed({ headY, height: box.max.y - box.min.y })
 
-        // Collapse the arms instead of posing them. Rest poses differ between
-        // models -- a rotation that lowers one model's arms raises another's --
-        // and a portrait has no use for them. Scaling the bone works where
-        // hiding it does not, because skinned meshes follow skeleton matrices
-        // rather than the bone hierarchy's visibility.
+        // Move the arms out of shot rather than posing or shrinking them. Rest
+        // poses differ between models, so a rotation that lowers one model's
+        // arms raises another's; and scaling a bone to nothing leaves its
+        // skinned vertices bunched at the joint, which shows as a blob beside
+        // the face. Translating the bone takes the geometry with it.
         for (const name of ['leftUpperArm', 'rightUpperArm'] as const) {
           const bone = loaded.humanoid.getNormalizedBoneNode(name)
-          if (bone) bone.scale.setScalar(0.001)
+          if (bone) bone.position.y -= 10
         }
         setVrm(loaded)
       },
