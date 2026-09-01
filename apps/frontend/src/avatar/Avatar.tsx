@@ -34,9 +34,18 @@ export interface AvatarProps {
   /** Returns current playback loudness, 0 when silent. */
   loudness: () => number
   onError: (message: string) => void
+  /** Reports the loaded model's real bounds so the camera can frame it. */
+  onFramed: (bounds: { headY: number; height: number; floorY: number }) => void
 }
 
-export function Avatar({ modelUrl, gesture, emotion, loudness, onError }: AvatarProps) {
+export function Avatar({
+  modelUrl,
+  gesture,
+  emotion,
+  loudness,
+  onError,
+  onFramed,
+}: AvatarProps) {
   const [vrm, setVrm] = useState<VRM | null>(null)
   const current = useRef({ armSwing: 0, headTilt: 0, torsoTwist: 0, mouth: 0 })
   const clock = useRef(0)
@@ -58,6 +67,13 @@ export function Avatar({ modelUrl, gesture, emotion, loudness, onError }: Avatar
         VRMUtils.removeUnnecessaryVertices(loaded.scene)
         VRMUtils.combineSkeletons(loaded.scene)
         loaded.scene.rotation.y = Math.PI // face the camera
+
+        // Models differ in height and origin, so frame from the real bounds
+        // rather than assuming: aim at the head and pull back to fit the torso.
+        const box = new THREE.Box3().setFromObject(loaded.scene)
+        const height = box.max.y - box.min.y
+        const headY = box.max.y
+        onFramed({ headY, height, floorY: box.min.y })
         setVrm(loaded)
       },
       () => {
@@ -68,7 +84,7 @@ export function Avatar({ modelUrl, gesture, emotion, loudness, onError }: Avatar
     return () => {
       cancelled = true
     }
-  }, [modelUrl, onError])
+  }, [modelUrl, onError, onFramed])
 
   useEffect(() => {
     return () => {

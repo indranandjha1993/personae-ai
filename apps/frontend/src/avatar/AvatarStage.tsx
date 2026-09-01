@@ -7,8 +7,9 @@
  * are driven by the same cues, so the conversation looks alive either way.
  */
 
-import { Canvas } from '@react-three/fiber'
+import { Canvas, useThree } from '@react-three/fiber'
 import { Suspense, useCallback, useEffect, useState } from 'react'
+import * as THREE from 'three'
 
 import { Avatar } from './Avatar'
 import { FallbackFigure } from './FallbackFigure'
@@ -25,8 +26,38 @@ export interface AvatarStageProps {
 
 type ModelState = 'checking' | 'present' | 'absent'
 
+interface Bounds {
+  headY: number
+  height: number
+  floorY: number
+}
+
+/**
+ * Points the camera at the upper body once the model's real size is known.
+ *
+ * Models vary in height and origin, so a fixed camera frames some of them at
+ * the knees. Framing from measured bounds works for any model.
+ */
+function FrameCamera({ bounds }: { bounds: Bounds | null }) {
+  const camera = useThree((state) => state.camera)
+
+  useEffect(() => {
+    if (!bounds) return
+    // Aim just below the head: the face carries the expression, and a little
+    // chest keeps the gestures visible.
+    const focusY = bounds.headY - bounds.height * 0.16
+    const distance = bounds.height * 1.15
+    camera.position.set(0, focusY, distance)
+    camera.lookAt(new THREE.Vector3(0, focusY, 0))
+    camera.updateProjectionMatrix()
+  }, [bounds, camera])
+
+  return null
+}
+
 export function AvatarStage({ accent, gesture, emotion, loudness }: AvatarStageProps) {
   const [model, setModel] = useState<ModelState>('checking')
+  const [bounds, setBounds] = useState<Bounds | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -44,10 +75,12 @@ export function AvatarStage({ accent, gesture, emotion, loudness }: AvatarStageP
   }, [])
 
   const handleError = useCallback(() => { setModel('absent') }, [])
+  const handleFramed = useCallback((measured: Bounds) => { setBounds(measured) }, [])
 
   return (
     <div className="stage">
-      <Canvas camera={{ position: [0, 0.85, 2.6], fov: 32 }}>
+      <Canvas camera={{ position: [0, 1.35, 1.9], fov: 32 }}>
+        <FrameCamera bounds={model === 'present' ? bounds : null} />
         <ambientLight intensity={1.6} />
         <directionalLight position={[2, 3, 2]} intensity={1.8} />
         <directionalLight position={[-2, 1, -1]} intensity={0.5} color="#8fa3bf" />
@@ -59,6 +92,7 @@ export function AvatarStage({ accent, gesture, emotion, loudness }: AvatarStageP
               emotion={emotion}
               loudness={loudness}
               onError={handleError}
+              onFramed={handleFramed}
             />
           ) : (
             <FallbackFigure
