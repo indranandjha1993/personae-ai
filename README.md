@@ -131,10 +131,10 @@ for every push and pull request.
 - [x] Typed configuration and provider interfaces
 - [x] Character-pack loader
 - [x] Mock provider implementations
-- [ ] WebSocket session protocol
-- [ ] Vertical slice: mic → backend → audio response
+- [x] WebSocket session protocol
+- [ ] Vertical slice: browser mic → backend → audio playback
 - [ ] Deepgram STT/TTS and LLM providers
-- [ ] Gesture and emotion inference
+- [x] Gesture and emotion inference (vocabulary-constrained)
 - [ ] Avatar rendering and lip-sync
 
 ## Contributing
