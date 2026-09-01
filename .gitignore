@@ -35,10 +35,5 @@ packs/local/
 .DS_Store
 Thumbs.db
 .idea/
-
-# Shared editor configuration is committed so a clone is correctly wired to the
-# nested virtualenv and src layout; per-user files are not.
-.vscode/*
-!.vscode/settings.json
-!.vscode/extensions.json
+.vscode/
 *.swp

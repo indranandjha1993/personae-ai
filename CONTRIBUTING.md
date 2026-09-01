@@ -23,15 +23,8 @@ cd apps/frontend && npm ci
 
 No credentials needed. Everything runs on mock providers by default.
 
-### Editor setup
-
-VS Code settings are committed. Open the repository root (not `apps/backend`) and accept the
-recommended extensions when prompted; the interpreter, `src` layout, pytest root, and Ruff
-configuration are all wired up already.
-
-The virtualenv lives at `apps/backend/.venv`, which editors do not discover on their own --
-that is what `python.defaultInterpreterPath` is for. If imports of `personae` show as
-unresolved, the interpreter is the first thing to check.
+Note that the virtualenv lives at `apps/backend/.venv` and the package uses a `src` layout,
+so point your editor's interpreter there if imports of `personae` show as unresolved.
 
 ## Working style
 
