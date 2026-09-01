@@ -1,0 +1,49 @@
+{
+  // The virtualenv is nested under apps/backend, so it is not auto-discovered.
+  "python.defaultInterpreterPath": "${workspaceFolder}/apps/backend/.venv/bin/python",
+  "python.terminal.activateEnvironment": true,
+
+  // src layout: without this, imports of `personae` resolve in the editor but
+  // show as unresolved before an editable install is detected.
+  "python.analysis.extraPaths": ["${workspaceFolder}/apps/backend/src"],
+  "python.analysis.typeCheckingMode": "strict",
+  "python.analysis.autoImportCompletions": true,
+
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.cwd": "${workspaceFolder}/apps/backend",
+  "python.testing.pytestArgs": ["tests"],
+
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.organizeImports.ruff": "explicit",
+      "source.fixAll.ruff": "explicit"
+    }
+  },
+
+  "ruff.configuration": "${workspaceFolder}/apps/backend/pyproject.toml",
+  "ruff.importStrategy": "fromEnvironment",
+
+  "[typescript]": { "editor.defaultFormatter": "dbaeumer.vscode-eslint" },
+  "[typescriptreact]": { "editor.defaultFormatter": "dbaeumer.vscode-eslint" },
+  "[json]": { "editor.defaultFormatter": "vscode.json-language-features" },
+  "[toml]": { "editor.defaultFormatter": "tamasfe.even-better-toml" },
+
+  "editor.rulers": [100],
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.pytest_cache": true,
+    "**/.mypy_cache": true,
+    "**/.ruff_cache": true
+  },
+  "search.exclude": {
+    "**/.venv": true,
+    "**/node_modules": true,
+    "**/uv.lock": true
+  }
+}
