@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import './styles.css'
 import { useConversation } from './useConversation'
 
 interface CharacterSummary {
@@ -29,16 +30,23 @@ export function App() {
     return () => { controller.abort() }
   }, [])
 
+  const active = characters.find((character) => character.id === selected)
+
   return (
     <main>
       <h1>Personae AI</h1>
-      {loadError !== '' && <p role="alert">{loadError}</p>}
-      <ul aria-label="Characters">
+      <p className="tagline">Pick a voice, then talk to it.</p>
+
+      {loadError !== '' && <p className="alert" role="alert">{loadError}</p>}
+
+      <ul className="characters" aria-label="Characters">
         {characters.map((character) => (
           <li key={character.id}>
             <button
               type="button"
+              className="character"
               aria-pressed={selected === character.id}
+              style={{ '--dot': character.theme.primary } as React.CSSProperties}
               onClick={() => { setSelected(character.id) }}
             >
               {character.display_name}
@@ -46,7 +54,8 @@ export function App() {
           </li>
         ))}
       </ul>
-      {selected !== null && <Conversation characterId={selected} />}
+
+      {active && <Conversation key={active.id} characterId={active.id} />}
     </main>
   )
 }
@@ -57,18 +66,39 @@ function Conversation({ characterId }: { characterId: string }) {
   const listening = status === 'listening'
 
   return (
-    <section aria-label="Conversation">
-      <p>
-        Status: <span data-testid="status">{status}</span>
-      </p>
-      <button type="button" onClick={listening ? stop : start}>
-        {listening ? 'Stop speaking' : 'Start speaking'}
-      </button>
-      {detail !== '' && <p role="alert">{detail}</p>}
-      {transcript !== '' && <p>You said: {transcript}</p>}
-      {reply !== '' && <p>Reply: {reply}</p>}
-      <p>
-        Gesture: {gesture} / Emotion: {emotion}
+    <section className="panel" aria-label="Conversation">
+      <div className="row">
+        <button
+          type="button"
+          className="talk"
+          data-listening={listening}
+          onClick={listening ? stop : start}
+        >
+          {listening ? 'Stop speaking' : 'Start speaking'}
+        </button>
+        <span className="status" data-state={status}>
+          <span data-testid="status">{status}</span>
+        </span>
+      </div>
+
+      {detail !== '' && <p className="alert" role="alert">{detail}</p>}
+
+      {transcript !== '' && (
+        <p className="line">
+          <span>You said</span>
+          {transcript}
+        </p>
+      )}
+
+      {reply !== '' && (
+        <p className="line">
+          <span>Reply</span>
+          {reply}
+        </p>
+      )}
+
+      <p className="cues">
+        Gesture: {gesture} · Emotion: {emotion}
       </p>
     </section>
   )
