@@ -81,7 +81,7 @@ never emit a gesture the frontend has no animation for.
 
 ## Getting started
 
-**Prerequisites:** Python 3.13+ with [`uv`](https://docs.astral.sh/uv/), Node 20+.
+**Prerequisites:** Python 3.13+ with [`uv`](https://docs.astral.sh/uv/), Node 22.22+.
 No API keys required.
 
 ```bash
