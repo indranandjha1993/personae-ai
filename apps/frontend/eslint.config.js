@@ -6,6 +6,14 @@ import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
   { ignores: ['dist', 'coverage'] },
+  {
+    // Worklets run in AudioWorkletGlobalScope, not the window scope, so the
+    // browser globals list does not cover their APIs.
+    files: ['public/**/*.worklet.js'],
+    languageOptions: {
+      globals: { ...globals.worker, AudioWorkletProcessor: 'readonly', registerProcessor: 'readonly', sampleRate: 'readonly', currentTime: 'readonly' },
+    },
+  },
   js.configs.recommended,
   {
     // Type-aware rules are scoped to TypeScript sources: the flat config and

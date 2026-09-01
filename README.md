@@ -98,6 +98,13 @@ cd apps/frontend && npm ci && npm run dev
 
 Open <http://localhost:5173>.
 
+If port 8000 is already taken, run the backend elsewhere and point the dev server at it:
+
+```bash
+uv run uvicorn personae.main:app --port 8100 --ws websockets-sansio   # backend
+PERSONAE_BACKEND=http://127.0.0.1:8100 npm run dev                    # frontend
+```
+
 To use real services, set `DEEPGRAM_API_KEY` and your LLM endpoint in `.env` and switch the
 provider settings from `mock` to `live`.
 
