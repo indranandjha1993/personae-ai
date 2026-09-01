@@ -17,6 +17,16 @@ import { mouthOpenness, toPose, toVrmEmotion } from './expression-map'
 /** Frame-rate independent smoothing; higher converges faster. */
 const SMOOTHING = 9
 
+/** How much each emotion opens or closes the posture, when blendshapes are absent. */
+const EMOTION_POSTURE: Record<string, number> = {
+  happy: 1,
+  surprised: 0.8,
+  relaxed: 0.3,
+  neutral: 0,
+  angry: -0.4,
+  sad: -1,
+}
+
 export interface AvatarProps {
   modelUrl: string
   gesture: string
@@ -73,6 +83,11 @@ export function Avatar({ modelUrl, gesture, emotion, loudness, onError }: Avatar
     const target = toPose(gesture)
     const state = current.current
     const damp = THREE.MathUtils.damp
+    const vrmEmotion = toVrmEmotion(emotion)
+    // Emotion is also expressed as posture, so it still reads on models with no
+    // emotion blendshapes: lifted and open when positive, closed and lowered
+    // when negative.
+    const lift = EMOTION_POSTURE[vrmEmotion] ?? 0
 
     state.armSwing = damp(state.armSwing, target.armSwing, SMOOTHING, delta)
     state.headTilt = damp(state.headTilt, target.headTilt, SMOOTHING, delta)
@@ -85,19 +100,19 @@ export function Avatar({ modelUrl, gesture, emotion, loudness, onError }: Avatar
 
     const leftArm = humanoid.getNormalizedBoneNode('leftUpperArm')
     const rightArm = humanoid.getNormalizedBoneNode('rightUpperArm')
-    if (leftArm) leftArm.rotation.z = 1.2 - state.armSwing
-    if (rightArm) rightArm.rotation.z = -1.2 + state.armSwing
+    if (leftArm) leftArm.rotation.z = 1.2 - state.armSwing - lift * 0.15
+    if (rightArm) rightArm.rotation.z = -1.2 + state.armSwing + lift * 0.15
 
     const head = humanoid.getNormalizedBoneNode('head')
     if (head) {
-      head.rotation.x = state.headTilt + breath * 0.5
+      head.rotation.x = state.headTilt + breath * 0.5 - lift * 0.12
       head.rotation.y = state.torsoTwist * 0.6
     }
 
     const spine = humanoid.getNormalizedBoneNode('spine')
     if (spine) {
       spine.rotation.y = state.torsoTwist
-      spine.rotation.x = breath
+      spine.rotation.x = breath - lift * 0.06
     }
 
     const expressions = vrm.expressionManager
@@ -105,8 +120,12 @@ export function Avatar({ modelUrl, gesture, emotion, loudness, onError }: Avatar
       // 'aa' is the open-vowel viseme; amplitude cannot tell us which vowel,
       // so one well-timed shape reads better than guessing between five.
       expressions.setValue('aa', state.mouth)
+
+      // Many models -- including most VRM 0.x avatars -- ship visemes but no
+      // emotion presets. Setting a missing one is silently ignored, so posture
+      // below carries the emotion for those models.
       for (const preset of ['happy', 'angry', 'sad', 'relaxed', 'surprised'] as const) {
-        expressions.setValue(preset, preset === toVrmEmotion(emotion) ? 0.85 : 0)
+        expressions.setValue(preset, preset === vrmEmotion ? 0.85 : 0)
       }
     }
 
