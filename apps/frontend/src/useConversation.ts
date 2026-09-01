@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { startCapture, type Capture } from './audio/capture'
 import { PcmPlayer } from './audio/playback'
-import { decodePcm } from './protocol'
+import { decodePcm, DEFAULT_SAMPLE_RATE } from './protocol'
 import { openSession, type Session } from './session'
 
 export type Status = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error'
@@ -39,6 +39,7 @@ export function useConversation(characterId: string): Conversation {
   const captureRef = useRef<Capture | null>(null)
   const sessionRef = useRef<Session | null>(null)
   const playerRef = useRef<PcmPlayer | null>(null)
+  const contextRef = useRef<AudioContext | null>(null)
 
   const teardown = useCallback(() => {
     captureRef.current?.stop()
@@ -47,6 +48,10 @@ export function useConversation(characterId: string): Conversation {
     sessionRef.current = null
     playerRef.current?.stop()
     playerRef.current = null
+    // Browsers cap concurrent AudioContexts, so an unclosed one per turn
+    // eventually refuses to start.
+    void contextRef.current?.close()
+    contextRef.current = null
   }, [])
 
   // StrictMode double-invokes effects, so teardown must be idempotent.
@@ -60,8 +65,11 @@ export function useConversation(characterId: string): Conversation {
     setStatus('listening')
 
     // AudioContext must be created from the user gesture that called start().
-    const player = new PcmPlayer(new AudioContext())
-    playerRef.current = player
+    // The context is created now, from the user gesture; the player waits for
+    // the server to announce the rate its audio actually uses.
+    const context = new AudioContext()
+    contextRef.current = context
+    let player: PcmPlayer | null = null
 
     const session = openSession(characterId, {
       onMessage: (message) => {
@@ -77,8 +85,16 @@ export function useConversation(characterId: string): Conversation {
             setGesture(message.gesture)
             setEmotion(message.emotion)
             break
+          case 'ready':
+            player = new PcmPlayer(context, message.sample_rate)
+            playerRef.current = player
+            break
           case 'audio':
             setStatus('speaking')
+            if (!player) {
+              player = new PcmPlayer(context, DEFAULT_SAMPLE_RATE)
+              playerRef.current = player
+            }
             player.enqueue(decodePcm(message.pcm))
             break
           case 'error':

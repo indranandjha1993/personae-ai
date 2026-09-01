@@ -5,6 +5,12 @@
  * by a parser rather than cast into shape.
  */
 
+export interface ReadyMessage {
+  type: 'ready'
+  sample_rate: number
+  channels: number
+}
+
 export interface TranscriptMessage {
   type: 'transcript'
   text: string
@@ -36,6 +42,7 @@ export interface DoneMessage {
 }
 
 export type ServerMessage =
+  | ReadyMessage
   | TranscriptMessage
   | ReplyMessage
   | AudioMessage
@@ -52,6 +59,10 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
   if (!isRecord(raw)) return null
 
   switch (raw['type']) {
+    case 'ready':
+      return typeof raw['sample_rate'] === 'number' && typeof raw['channels'] === 'number'
+        ? { type: 'ready', sample_rate: raw['sample_rate'], channels: raw['channels'] }
+        : null
     case 'transcript':
     case 'reply':
       return typeof raw['text'] === 'string'
@@ -71,6 +82,14 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
       return null
   }
 }
+
+/**
+ * Fallback sample rate, used only if the server never announces one.
+ *
+ * The server sends a `ready` message with the real rate on connect; playing the
+ * samples at any other rate shifts pitch and speed.
+ */
+export const DEFAULT_SAMPLE_RATE = 24_000
 
 /** Decode a base64 audio payload into 16-bit PCM samples. */
 export function decodePcm(base64: string): Int16Array {

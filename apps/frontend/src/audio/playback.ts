@@ -6,6 +6,11 @@
  * Starting every buffer at `currentTime` would leave audible gaps whenever the
  * network hiccuped; tracking the end of the previous chunk instead keeps
  * playback continuous.
+ *
+ * The source rate is supplied separately from the output device rate. Labelling
+ * 24kHz speech with a 48kHz context rate plays it at double speed, which sounds
+ * like a chipmunk; the browser resamples for us once the buffer is honest about
+ * what it contains.
  */
 
 /** How far ahead of `currentTime` to start, absorbing network jitter. */
@@ -17,7 +22,10 @@ export class PcmPlayer {
   private readonly analyser: AnalyserNode | null
   private readonly frame: Float32Array<ArrayBuffer>
 
-  constructor(private readonly context: AudioContext) {
+  constructor(
+    private readonly context: AudioContext,
+    private readonly sourceSampleRate: number,
+  ) {
     // Everything routes through an analyser so the avatar's mouth can follow
     // the audio that is actually playing. Reading loudness from playback keeps
     // the mouth in sync by construction -- it cannot drift from the sound.
@@ -45,7 +53,7 @@ export class PcmPlayer {
   enqueue(samples: Int16Array): void {
     if (samples.length === 0) return
 
-    const buffer = this.context.createBuffer(1, samples.length, this.context.sampleRate)
+    const buffer = this.context.createBuffer(1, samples.length, this.sourceSampleRate)
     buffer.getChannelData(0).set(this.toFloat(samples))
 
     const source = this.context.createBufferSource()
