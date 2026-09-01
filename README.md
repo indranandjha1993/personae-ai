@@ -153,7 +153,7 @@ for every push and pull request.
 - [x] Character-pack loader
 - [x] Mock provider implementations
 - [x] WebSocket session protocol
-- [ ] Vertical slice: browser mic → backend → audio playback
+- [x] Vertical slice: browser mic → backend → audio playback
 - [x] Deepgram STT/TTS and LLM providers
 - [x] Gesture and emotion inference (vocabulary-constrained)
 - [ ] Avatar rendering and lip-sync
