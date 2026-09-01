@@ -107,3 +107,22 @@ export function mouthOpenness(rms: number): number {
   // Ease so quiet passages still register without the mouth flapping wide.
   return Math.min(1, normalised ** 0.6)
 }
+
+/** How far open the mouth sits when silent, so the face is not blank. */
+export const MOUTH_AT_REST = 0.08
+
+/**
+ * Distribute mouth openness across visemes.
+ *
+ * Amplitude cannot tell us which vowel is being spoken, but driving a single
+ * shape makes speech look like a hinge. Blending a wide vowel into a rounder
+ * one as loudness rises approximates the way a mouth actually moves.
+ */
+export function visemeWeights(openness: number): { aa: number; ih: number; ou: number } {
+  return {
+    aa: openness * 0.85,
+    // Quieter passages read as narrower shapes, louder ones as rounder.
+    ih: Math.max(0, 0.35 - openness * 0.35),
+    ou: Math.max(0, openness - 0.55) * 0.5,
+  }
+}

@@ -12,7 +12,15 @@ import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 
-import { ACTIVITY_POSE, mouthOpenness, toPose, toVrmEmotion, type Activity } from './expression-map'
+import {
+  ACTIVITY_POSE,
+  MOUTH_AT_REST,
+  mouthOpenness,
+  toPose,
+  toVrmEmotion,
+  visemeWeights,
+  type Activity,
+} from './expression-map'
 
 /** Frame-rate independent smoothing; higher converges faster. */
 const SMOOTHING = 9
@@ -139,7 +147,10 @@ export function Avatar({
     state.headTilt = damp(state.headTilt, target.headTilt, SMOOTHING, delta)
     state.torsoTwist = damp(state.torsoTwist, target.torsoTwist, SMOOTHING, delta)
     // The mouth chases loudness faster than the body moves, or speech looks dubbed.
-    state.mouth = damp(state.mouth, mouthOpenness(loudness()), SMOOTHING * 2.2, delta)
+    // Rest slightly open rather than fully shut: a closed mouth on a model
+    // whose lips are drawn as a seam reads as no mouth at all.
+    const targetMouth = Math.max(MOUTH_AT_REST, mouthOpenness(loudness()))
+    state.mouth = damp(state.mouth, targetMouth, SMOOTHING * 2.2, delta)
     // Activity moves more slowly than speech: a head turning to think should
     // look deliberate, not twitchy.
     state.pitch = damp(state.pitch, activityPose.headPitch, SMOOTHING * 0.55, delta)
@@ -173,9 +184,12 @@ export function Avatar({
 
     const expressions = vrm.expressionManager
     if (expressions) {
-      // 'aa' is the open-vowel viseme; amplitude cannot tell us which vowel,
-      // so one well-timed shape reads better than guessing between five.
-      expressions.setValue('aa', state.mouth)
+      // Amplitude cannot identify a vowel, but driving one shape makes speech
+      // look like a hinge, so openness is spread across a few visemes.
+      const visemes = visemeWeights(state.mouth)
+      expressions.setValue('aa', visemes.aa)
+      expressions.setValue('ih', visemes.ih)
+      expressions.setValue('ou', visemes.ou)
 
       // Many models -- including most VRM 0.x avatars -- ship visemes but no
       // emotion presets. Setting a missing one is silently ignored, so posture
