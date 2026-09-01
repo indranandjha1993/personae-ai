@@ -12,4 +12,5 @@ def test_health_reports_provider_modes() -> None:
     assert response.json() == {
         "status": "ok",
         "providers": {"stt": "mock", "llm": "mock", "tts": "mock"},
+        "characters": 3,
     }
