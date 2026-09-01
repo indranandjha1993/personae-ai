@@ -78,14 +78,14 @@ def test_invalid_toml_names_the_file(tmp_path: Path) -> None:
     pack = tmp_path / "p"
     (pack / "characters").mkdir(parents=True)
     (pack / "pack.toml").write_text("schema_version = 1\nname = 'p'\nthis is not toml\n")
-    with pytest.raises(PackError, match="pack.toml is not valid TOML"):
+    with pytest.raises(PackError, match=r"pack\.toml is not valid TOML"):
         load_packs([pack])
 
 
 def test_directory_without_a_manifest_is_rejected(tmp_path: Path) -> None:
     pack = tmp_path / "nomanifest"
     (pack / "characters").mkdir(parents=True)
-    with pytest.raises(PackError, match="no pack.toml"):
+    with pytest.raises(PackError, match=r"no pack\.toml"):
         load_packs([pack])
 
 
