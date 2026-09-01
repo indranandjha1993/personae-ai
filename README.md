@@ -62,7 +62,7 @@ current at the time of writing.
 ```
 Browser
   │  AudioWorklet captures mic → PCM frames
-  │  WebSocket  ws://localhost:8000/ws/session/{character_id}
+  │  WebSocket  ws://localhost:8000/ws/session/{pack}/{character}
   ▼
 FastAPI
   ├─ SttProvider    streaming transcription
