@@ -1,0 +1,52 @@
+name: Backend
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: apps/backend
+
+jobs:
+  test:
+    name: py${{ matrix.python }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ["3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/backend/uv.lock
+
+      - name: Install dependencies
+        run: uv sync --locked --python ${{ matrix.python }}
+
+      - name: Lint
+        run: uv run ruff check --output-format=github .
+
+      - name: Check formatting
+        run: uv run ruff format --check .
+
+      - name: Type check
+        run: uv run mypy
+
+      # Runs with no credentials in the environment: the suite must pass on
+      # mock providers alone, which is what keeps the project contributable.
+      - name: Test
+        run: uv run pytest --cov=personae --cov-report=term-missing
