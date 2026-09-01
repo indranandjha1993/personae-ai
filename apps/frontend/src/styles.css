@@ -155,7 +155,10 @@ h1 {
 }
 
 .stage {
-  height: 22rem;
+  /* Portrait proportions: the face fills the frame rather than floating in it. */
+  height: 20rem;
+  max-width: 20rem;
+  margin-inline: auto;
   margin: 0;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -212,36 +215,11 @@ h1 {
 
 .stage-wrap { margin: 0 0 1.25rem; }
 
-.models {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin: 0.6rem 0 0;
-}
 
-.model {
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--muted);
-  border-radius: 6px;
-  padding: 0.3rem 0.65rem;
-  font: inherit;
-  font-size: 0.8rem;
-  cursor: pointer;
-}
 
-.model:hover { border-color: var(--muted); color: var(--text); }
 
-.model:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
 
-.model[aria-pressed='true'] {
-  border-color: var(--accent);
-  color: var(--text);
-  font-weight: 600;
-}
+
 
 .model-credit {
   margin: 0.5rem 0 0;

@@ -1,9 +1,9 @@
 /**
- * The avatar viewport and its model picker.
+ * The avatar viewport: a close portrait of the character's face.
  *
- * Models are large licensed binaries and are not committed, so the viewport
- * always has a procedural figure to fall back on and only offers the models
- * actually present on disk.
+ * Framed on the head deliberately. Expression -- eyes, mouth, the tilt of a
+ * head while thinking -- is what this conveys, and a portrait does not depend
+ * on how well a model's body happens to be rigged.
  */
 
 import { Canvas, useThree } from '@react-three/fiber'
@@ -11,12 +11,12 @@ import { Suspense, useCallback, useEffect, useState } from 'react'
 import * as THREE from 'three'
 
 import { Avatar } from './Avatar'
-import { FallbackFigure } from './FallbackFigure'
 import { type Activity } from './expression-map'
-import { BUILT_IN, findAvailableModels, type ModelChoice } from './models'
+
+const MODEL_URL = '/models/seed-san.vrm'
+const MODEL_CREDIT = 'Seed-san by VirtualCast, Inc. — VRM Public License 1.0'
 
 export interface AvatarStageProps {
-  accent: string
   gesture: string
   emotion: string
   activity: Activity
@@ -26,24 +26,23 @@ export interface AvatarStageProps {
 interface Bounds {
   headY: number
   height: number
-  floorY: number
 }
 
 /**
- * Points the camera at the upper body once the model's real size is known.
+ * Frames the face once the model's real proportions are known.
  *
- * Models vary in height and origin, so a fixed camera frames some of them at
- * the knees. Framing from measured bounds works for any model.
+ * Models differ in height and origin, so a fixed camera crops some of them at
+ * the chin. Measuring the head bone works for any of them.
  */
-function FrameCamera({ bounds }: { bounds: Bounds | null }) {
+function FrameFace({ bounds }: { bounds: Bounds | null }) {
   const camera = useThree((state) => state.camera)
 
   useEffect(() => {
     if (!bounds) return
-    // Aim just below the head: the face carries the expression, and a little
-    // chest keeps the gestures visible.
-    const focusY = bounds.headY - bounds.height * 0.16
-    camera.position.set(0, focusY, bounds.height * 1.15)
+    // Slightly above the head bone: eyes sit above it, and a portrait wants
+    // them a little above centre.
+    const focusY = bounds.headY + bounds.height * 0.035
+    camera.position.set(0, focusY, bounds.height * 0.33)
     camera.lookAt(new THREE.Vector3(0, focusY, 0))
     camera.updateProjectionMatrix()
   }, [bounds, camera])
@@ -51,90 +50,49 @@ function FrameCamera({ bounds }: { bounds: Bounds | null }) {
   return null
 }
 
-export function AvatarStage({
-  accent,
-  gesture,
-  emotion,
-  activity,
-  loudness,
-}: AvatarStageProps) {
-  const [available, setAvailable] = useState<ModelChoice[]>([])
-  const [selected, setSelected] = useState<ModelChoice>(BUILT_IN)
+export function AvatarStage({ gesture, emotion, activity, loudness }: AvatarStageProps) {
   const [bounds, setBounds] = useState<Bounds | null>(null)
+  const [failure, setFailure] = useState('')
 
-  useEffect(() => {
-    const controller = new AbortController()
-    findAvailableModels(controller.signal)
-      .then((models) => {
-        setAvailable(models)
-        // Prefer a real model when one is installed; the built-in figure is a
-        // fallback, not the intended experience.
-        const first = models[0]
-        if (first) setSelected(first)
-      })
-      .catch(() => { setAvailable([]) })
-    return () => { controller.abort() }
-  }, [])
-
-  const handleError = useCallback(() => { setSelected(BUILT_IN) }, [])
+  const handleError = useCallback((message: string) => { setFailure(message) }, [])
   const handleFramed = useCallback((measured: Bounds) => { setBounds(measured) }, [])
 
-  const choices = [...available, BUILT_IN]
-  const usingModel = selected.url !== ''
+  if (failure !== '') {
+    return (
+      <div className="stage stage--empty">
+        <p className="stage-title">Avatar unavailable</p>
+        <p className="stage-hint">
+          Place a <code>.vrm</code> model at <code>apps/frontend/public/models/seed-san.vrm</code>.
+          Models are not committed: they are large and carry their own licence.
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className="stage-wrap">
       <div className="stage">
-        <Canvas camera={{ position: [0, 1.35, 1.9], fov: 32 }}>
-          <FrameCamera bounds={usingModel ? bounds : null} />
-          <ambientLight intensity={1.6} />
-          <directionalLight position={[2, 3, 2]} intensity={1.8} />
-          <directionalLight position={[-2, 1, -1]} intensity={0.5} color="#8fa3bf" />
+        <Canvas camera={{ position: [0, 1.4, 0.55], fov: 26 }} gl={{ alpha: true }}>
+          <FrameFace bounds={bounds} />
+          {/* MToon materials are unlit: they take their tone from ambient light
+              and ignore directional lights, which is why a scene lit only by
+              directionals renders them black. */}
+          <ambientLight intensity={3.2} />
+          <directionalLight position={[1, 2, 3]} intensity={0.9} />
           <Suspense fallback={null}>
-            {usingModel ? (
-              <Avatar
-                key={selected.id}
-                modelUrl={selected.url}
-                gesture={gesture}
-                emotion={emotion}
-                activity={activity}
-                loudness={loudness}
-                onError={handleError}
-                onFramed={handleFramed}
-              />
-            ) : (
-              <FallbackFigure
-                accent={accent}
-                gesture={gesture}
-                emotion={emotion}
-                activity={activity}
-                loudness={loudness}
-              />
-            )}
+            <Avatar
+              modelUrl={MODEL_URL}
+              gesture={gesture}
+              emotion={emotion}
+              activity={activity}
+              loudness={loudness}
+              onError={handleError}
+              onFramed={handleFramed}
+            />
           </Suspense>
         </Canvas>
       </div>
-
-      {choices.length > 1 && (
-        <div className="models" role="group" aria-label="Avatar model">
-          {choices.map((choice) => (
-            <button
-              key={choice.id}
-              type="button"
-              className="model"
-              aria-pressed={selected.id === choice.id}
-              title={choice.credit}
-              onClick={() => {
-                setBounds(null)
-                setSelected(choice)
-              }}
-            >
-              {choice.name}
-            </button>
-          ))}
-        </div>
-      )}
-      <p className="model-credit">{selected.credit}</p>
+      <p className="model-credit">{MODEL_CREDIT}</p>
     </div>
   )
 }

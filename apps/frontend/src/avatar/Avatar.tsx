@@ -17,9 +17,6 @@ import { ACTIVITY_POSE, mouthOpenness, toPose, toVrmEmotion, type Activity } fro
 /** Frame-rate independent smoothing; higher converges faster. */
 const SMOOTHING = 9
 
-/** Radians the upper arms rest below horizontal, out of the loaded T-pose. */
-const ARM_REST = 1.25
-
 /** How much each emotion opens or closes the posture, when blendshapes are absent. */
 const EMOTION_POSTURE: Record<string, number> = {
   happy: 1,
@@ -39,8 +36,8 @@ export interface AvatarProps {
   /** Returns current playback loudness, 0 when silent. */
   loudness: () => number
   onError: (message: string) => void
-  /** Reports the loaded model's real bounds so the camera can frame it. */
-  onFramed: (bounds: { headY: number; height: number; floorY: number }) => void
+  /** Reports where the head sits, so the camera can frame the face. */
+  onFramed: (bounds: { headY: number; height: number }) => void
 }
 
 export function Avatar({
@@ -84,12 +81,23 @@ export function Avatar({
         VRMUtils.combineSkeletons(loaded.scene)
         loaded.scene.rotation.y = Math.PI // face the camera
 
-        // Models differ in height and origin, so frame from the real bounds
-        // rather than assuming: aim at the head and pull back to fit the torso.
+        // Frame on the face: expression is what this shows, and a portrait
+        // avoids depending on how well the body happens to be rigged.
+        const headNode = loaded.humanoid.getNormalizedBoneNode('head')
         const box = new THREE.Box3().setFromObject(loaded.scene)
-        const height = box.max.y - box.min.y
-        const headY = box.max.y
-        onFramed({ headY, height, floorY: box.min.y })
+        const headY = headNode
+          ? new THREE.Vector3().setFromMatrixPosition(headNode.matrixWorld).y
+          : box.max.y * 0.93
+        onFramed({ headY, height: box.max.y - box.min.y })
+
+        // Rest the arms once, out of the loaded T-pose. They are mostly out of
+        // shot, but a stray hand at the edge of a close crop is worse than none.
+        const rest = (name: 'leftUpperArm' | 'rightUpperArm', z: number) => {
+          const bone = loaded.humanoid.getNormalizedBoneNode(name)
+          if (bone) bone.rotation.z = z
+        }
+        rest('leftUpperArm', 1.4)
+        rest('rightUpperArm', -1.4)
         setVrm(loaded)
       },
       () => {
@@ -138,25 +146,6 @@ export function Avatar({
     // A slow drift while thinking, as though following a train of thought.
     const drift = activity === 'thinking' ? Math.sin(clock.current * 0.9) * 0.05 : 0
 
-    // A VRM loads in T-pose with the arms straight out. Roughly 70 degrees of
-    // downward rotation gives a natural rest; gestures move from there.
-    const leftArm = humanoid.getNormalizedBoneNode('leftUpperArm')
-    const rightArm = humanoid.getNormalizedBoneNode('rightUpperArm')
-    if (leftArm) {
-      leftArm.rotation.z = ARM_REST - state.armSwing - lift * 0.12
-      leftArm.rotation.x = state.armSwing * 0.35
-    }
-    if (rightArm) {
-      rightArm.rotation.z = -ARM_REST + state.armSwing + lift * 0.12
-      rightArm.rotation.x = state.armSwing * 0.35
-    }
-
-    // Bending the forearms keeps the silhouette from reading as a mannequin.
-    const leftLower = humanoid.getNormalizedBoneNode('leftLowerArm')
-    const rightLower = humanoid.getNormalizedBoneNode('rightLowerArm')
-    if (leftLower) leftLower.rotation.y = -0.3 - state.armSwing * 0.5
-    if (rightLower) rightLower.rotation.y = 0.3 + state.armSwing * 0.5
-
     const head = humanoid.getNormalizedBoneNode('head')
     if (head) {
       head.rotation.x = state.headTilt + state.pitch + breath * 0.5 - lift * 0.12
@@ -167,10 +156,14 @@ export function Avatar({
     const neck = humanoid.getNormalizedBoneNode('neck')
     if (neck) neck.rotation.x = state.pitch * 0.35
 
-    const spine = humanoid.getNormalizedBoneNode('spine')
-    if (spine) {
-      spine.rotation.y = state.torsoTwist
-      spine.rotation.x = breath - lift * 0.06 + state.lean * 0.4
+    // The upper body barely shows in a portrait, but a little movement at the
+    // shoulders keeps the head from looking detached.
+    const chest = humanoid.getNormalizedBoneNode('upperChest') ??
+      humanoid.getNormalizedBoneNode('chest') ??
+      humanoid.getNormalizedBoneNode('spine')
+    if (chest) {
+      chest.rotation.y = state.torsoTwist * 0.4
+      chest.rotation.x = breath * 0.6 - lift * 0.04 + state.lean * 0.25
     }
 
     const expressions = vrm.expressionManager

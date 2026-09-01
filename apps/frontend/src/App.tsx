@@ -62,17 +62,13 @@ export function App() {
       </ul>
 
       {active && (
-        <Conversation
-          key={active.id}
-          characterId={active.id}
-          accent={active.theme.primary}
-        />
+        <Conversation key={active.id} characterId={active.id} />
       )}
     </main>
   )
 }
 
-function Conversation({ characterId, accent }: { characterId: string; accent: string }) {
+function Conversation({ characterId }: { characterId: string }) {
   const { status, transcript, reply, gesture, emotion, detail, loudness, start, stop } =
     useConversation(characterId)
   const listening = status === 'listening'
@@ -81,7 +77,6 @@ function Conversation({ characterId, accent }: { characterId: string; accent: st
     <section className="panel" aria-label="Conversation">
       <Suspense fallback={<div className="stage stage--empty">Loading avatar…</div>}>
         <AvatarStage
-          accent={accent}
           gesture={gesture}
           emotion={emotion}
           activity={status}
