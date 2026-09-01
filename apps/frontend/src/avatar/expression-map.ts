@@ -1,9 +1,6 @@
 /**
- * Translates the backend's character vocabulary into VRM expression weights.
- *
- * The backend emits cues drawn from each character's declared vocabulary; VRM
- * defines a fixed set of preset expressions. This is the seam between the two,
- * kept as data so an unmapped cue degrades to neutral rather than throwing.
+ * Maps the backend's character vocabulary onto VRM expression weights.
+ * An unmapped cue degrades to neutral rather than throwing.
  */
 
 /** VRM 1.0 emotion presets. */
@@ -13,11 +10,8 @@ export type VrmEmotion = 'neutral' | 'happy' | 'angry' | 'sad' | 'relaxed' | 'su
 export const VISEMES = ['aa', 'ih', 'ou', 'ee', 'oh'] as const
 
 /**
- * What the character is doing right now, independent of the reply's content.
- *
- * Conversation has a rhythm: attentive while listening, visibly considering
- * while the model works, animated while speaking. Without this the character
- * only reacts after a reply lands, which reads as a lag rather than a pause.
+ * What the character is doing, independent of what it says. Without this it
+ * only reacts once a reply lands, so the wait reads as a freeze.
  */
 export type Activity = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error'
 
@@ -94,11 +88,8 @@ export function toPose(gesture: string): Pose {
 }
 
 /**
- * Convert playback loudness into a mouth-open weight.
- *
- * Neither Deepgram nor a chat model emits viseme events, so the mouth is driven
- * by the amplitude of what is actually playing. That is sample-accurate by
- * construction: the mouth cannot drift out of sync with the audio.
+ * Playback loudness as a mouth-open weight. No provider emits viseme events,
+ * so amplitude drives the mouth -- which cannot drift out of sync.
  */
 export function mouthOpenness(rms: number): number {
   // Speech RMS sits well below full scale, so a modest ceiling keeps the mouth
@@ -108,21 +99,10 @@ export function mouthOpenness(rms: number): number {
   return Math.min(1, normalised ** 0.6)
 }
 
-/**
- * How far open the mouth sits when silent.
- *
- * This model draws closed lips very faintly, so a nearly shut mouth reads as
- * no mouth at all. A clearly parted rest position is what makes it visible.
- */
+/** Resting mouth openness; fully closed lips read as no mouth at all. */
 export const MOUTH_AT_REST = 0.22
 
-/**
- * Distribute mouth openness across visemes.
- *
- * Amplitude cannot tell us which vowel is being spoken, but driving a single
- * shape makes speech look like a hinge. Blending a wide vowel into a rounder
- * one as loudness rises approximates the way a mouth actually moves.
- */
+/** Spreads openness across visemes; one shape alone moves like a hinge. */
 export function visemeWeights(openness: number): { aa: number; ih: number; ou: number } {
   return {
     aa: openness * 0.85,

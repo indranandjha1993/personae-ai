@@ -1,10 +1,4 @@
-/**
- * The avatar viewport: a close portrait of the character's face.
- *
- * Framed on the head deliberately. Expression -- eyes, mouth, the tilt of a
- * head while thinking -- is what this conveys, and a portrait does not depend
- * on how well a model's body happens to be rigged.
- */
+/** The avatar viewport: a close portrait framed on the character's face. */
 
 import { Canvas, useThree } from '@react-three/fiber'
 import { Suspense, useCallback, useEffect, useState } from 'react'
@@ -28,20 +22,13 @@ interface Bounds {
   height: number
 }
 
-/**
- * Frames the face once the model's real proportions are known.
- *
- * Models differ in height and origin, so a fixed camera crops some of them at
- * the chin. Measuring the head bone works for any of them.
- */
+/** Frames the face from the model's measured head position. */
 function FrameFace({ bounds }: { bounds: Bounds | null }) {
   const camera = useThree((state) => state.camera)
 
   useEffect(() => {
     if (!bounds) return
-    // Eyes sit above the head bone, and a portrait wants them a little above
-    // centre. The distance frames head and shoulders rather than filling the
-    // frame with a face.
+    // Eyes sit above the head bone; a portrait wants them above centre.
     const focusY = bounds.headY + bounds.height * 0.05
     camera.position.set(0, focusY, bounds.height * 0.62)
     camera.lookAt(new THREE.Vector3(0, focusY, 0))
@@ -75,11 +62,10 @@ export function AvatarStage({ gesture, emotion, activity, loudness }: AvatarStag
       <div className="stage">
         <Canvas camera={{ position: [0, 1.4, 0.55], fov: 26 }} gl={{ alpha: true }}>
           <FrameFace bounds={bounds} />
-          {/* MToon materials are unlit: they take their tone from ambient light
-              and ignore directional lights, which is why a scene lit only by
-              directionals renders them black. */}
-          <ambientLight intensity={3.2} />
-          <directionalLight position={[1, 2, 3]} intensity={0.9} />
+          {/* Matches the three-vrm basic example: one normalised directional
+              light at Math.PI, which is what MToon is authored against. */}
+          <directionalLight position={[1, 1, 1]} intensity={Math.PI} />
+          <ambientLight intensity={0.6} />
           <Suspense fallback={null}>
             <Avatar
               modelUrl={MODEL_URL}
