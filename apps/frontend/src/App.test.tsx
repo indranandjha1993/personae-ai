@@ -4,6 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { App } from './App'
 
+// jsdom has no WebGL, so the 3D stage cannot render here. These tests cover the
+// character picker and conversation state; the avatar's own logic is tested in
+// src/avatar/expression-map.test.ts and verified in a real browser.
+vi.mock('./avatar/AvatarStage', () => ({
+  AvatarStage: () => null,
+}))
+
 const CHARACTERS = {
   characters: [
     {

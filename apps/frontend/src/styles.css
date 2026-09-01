@@ -153,3 +153,46 @@ h1 {
   color: var(--muted);
   font-size: 0.9rem;
 }
+
+.stage {
+  height: 22rem;
+  margin: 0 0 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: radial-gradient(circle at 50% 30%, #1e2430 0%, #12151c 70%);
+  overflow: hidden;
+}
+
+.stage--empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.stage-title { margin: 0; font-weight: 600; }
+
+.stage-hint {
+  margin: 0;
+  max-width: 30rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.stage-hint code {
+  background: #0d1016;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.85em;
+}
+
+.stage-cue {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}

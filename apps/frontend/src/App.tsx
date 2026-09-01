@@ -1,7 +1,13 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 
 import './styles.css'
 import { useConversation } from './useConversation'
+
+// The 3D stack is roughly two thirds of the bundle. Loading it separately keeps
+// the first paint fast and costs nothing for anyone without a model.
+const AvatarStage = lazy(() =>
+  import('./avatar/AvatarStage').then((module) => ({ default: module.AvatarStage })),
+)
 
 interface CharacterSummary {
   id: string
@@ -61,12 +67,16 @@ export function App() {
 }
 
 function Conversation({ characterId }: { characterId: string }) {
-  const { status, transcript, reply, gesture, emotion, detail, start, stop } =
+  const { status, transcript, reply, gesture, emotion, detail, loudness, start, stop } =
     useConversation(characterId)
   const listening = status === 'listening'
 
   return (
     <section className="panel" aria-label="Conversation">
+      <Suspense fallback={<div className="stage stage--empty">Loading avatar…</div>}>
+        <AvatarStage gesture={gesture} emotion={emotion} loudness={loudness} />
+      </Suspense>
+
       <div className="row">
         <button
           type="button"

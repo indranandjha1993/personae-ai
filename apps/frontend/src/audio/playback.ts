@@ -14,8 +14,32 @@ const LEAD_SECONDS = 0.08
 export class PcmPlayer {
   private nextStartTime = 0
   private readonly sources = new Set<AudioBufferSourceNode>()
+  private readonly analyser: AnalyserNode | null
+  private readonly frame: Float32Array<ArrayBuffer>
 
-  constructor(private readonly context: AudioContext) {}
+  constructor(private readonly context: AudioContext) {
+    // Everything routes through an analyser so the avatar's mouth can follow
+    // the audio that is actually playing. Reading loudness from playback keeps
+    // the mouth in sync by construction -- it cannot drift from the sound.
+    this.analyser = typeof context.createAnalyser === 'function' ? context.createAnalyser() : null
+    if (this.analyser) {
+      this.analyser.fftSize = 1024
+      this.analyser.connect(context.destination)
+    }
+    this.frame = new Float32Array(new ArrayBuffer((this.analyser?.fftSize ?? 0) * 4))
+  }
+
+  /** Root-mean-square loudness of what is playing right now, 0 when silent. */
+  currentLoudness(): number {
+    if (!this.analyser) return 0
+    this.analyser.getFloatTimeDomainData(this.frame)
+    let sum = 0
+    for (let i = 0; i < this.frame.length; i += 1) {
+      const sample = this.frame[i] ?? 0
+      sum += sample * sample
+    }
+    return Math.sqrt(sum / this.frame.length)
+  }
 
   /** Schedule one chunk of 16-bit PCM immediately after whatever precedes it. */
   enqueue(samples: Int16Array): void {
@@ -26,7 +50,7 @@ export class PcmPlayer {
 
     const source = this.context.createBufferSource()
     source.buffer = buffer
-    source.connect(this.context.destination)
+    source.connect(this.analyser ?? this.context.destination)
 
     // If the stream stalled long enough for the schedule to fall behind the
     // clock, restart from now rather than trying to catch up on stale audio.

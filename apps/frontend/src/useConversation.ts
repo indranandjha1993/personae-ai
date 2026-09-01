@@ -17,6 +17,8 @@ export type Status = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error'
 
 export interface Conversation {
   status: Status
+  /** Current playback loudness, read per animation frame rather than as state. */
+  loudness: () => number
   transcript: string
   reply: string
   gesture: string
@@ -110,5 +112,9 @@ export function useConversation(characterId: string): Conversation {
     setStatus((current) => (current === 'listening' ? 'thinking' : current))
   }, [])
 
-  return { status, transcript, reply, gesture, emotion, detail, start, stop }
+  // A function rather than a value: loudness changes every frame, and putting
+  // it in state would re-render the whole tree 60 times a second.
+  const loudness = useCallback(() => playerRef.current?.currentLoudness() ?? 0, [])
+
+  return { status, transcript, reply, gesture, emotion, detail, loudness, start, stop }
 }
