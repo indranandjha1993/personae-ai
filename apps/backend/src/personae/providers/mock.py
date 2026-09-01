@@ -48,8 +48,9 @@ class MockTts:
     def __init__(self, ms_per_character: int = 40) -> None:
         self._ms_per_character = ms_per_character
 
-    async def synthesize(self, text: str, voice: str) -> AsyncIterator[bytes]:
-        total_samples = int(_SAMPLE_RATE * self._ms_per_character * max(len(text), 1) / 1000)
+    async def synthesize(self, text: str, voice: str, rate: float = 1.0) -> AsyncIterator[bytes]:
+        scaled = self._ms_per_character / max(rate, 0.1)
+        total_samples = int(_SAMPLE_RATE * scaled * max(len(text), 1) / 1000)
         frame = _SAMPLE_RATE // 10  # 100 ms frames, as a live provider would stream
         for start in range(0, total_samples, frame):
             await asyncio.sleep(0)

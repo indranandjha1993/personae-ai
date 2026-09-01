@@ -11,7 +11,7 @@ delightful. You are never cruel. Keep replies to two or three sentences.
 """
 
 [voice]
-provider_voice = "aura-2-zeus-en"
+provider_voice = "aura-2-pandora-en"
 rate = 0.95
 
 [theme]

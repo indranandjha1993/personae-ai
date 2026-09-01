@@ -24,8 +24,8 @@ import {
 
 const SMOOTHING = 9
 
-/** Meshes hidden for a portrait; limbs are separate meshes, not skinned bones. */
-const HIDDEN_MESH_PATTERN = /arm|hand|leg|foot/i
+/** Half-width of the portrait, as a fraction of body height. */
+const PORTRAIT_HALF_WIDTH = 0.14
 
 /** How far each emotion opens or closes the posture, for models without blendshapes. */
 const EMOTION_POSTURE: Record<string, number> = {
@@ -90,11 +90,10 @@ export function Avatar({
         // Normalises VRM 0.x orientation; VRM 1.0 already faces the camera.
         VRMUtils.rotateVRM0(loaded)
 
+        // Recommended by the official example: a close crop otherwise culls
+        // geometry whose bounding volume falls outside the frustum.
         loaded.scene.traverse((object) => {
-          // Recommended by the official example: a close crop otherwise culls
-          // geometry whose bounding volume falls outside the frustum.
           object.frustumCulled = false
-          if (HIDDEN_MESH_PATTERN.test(object.name)) object.visible = false
         })
 
         loaded.scene.updateMatrixWorld(true)
@@ -103,7 +102,20 @@ export function Avatar({
         const headY = headNode
           ? new THREE.Vector3().setFromMatrixPosition(headNode.matrixWorld).y
           : box.max.y * 0.93
-        onFramed({ headY, height: box.max.y - box.min.y })
+        const height = box.max.y - box.min.y
+
+        // Hide meshes that sit outside the portrait rather than matching on
+        // names: shoulder pieces belong to the clothing mesh, and every model
+        // names its parts differently.
+        const limit = height * PORTRAIT_HALF_WIDTH
+        loaded.scene.traverse((object) => {
+          if (!(object instanceof THREE.Mesh)) return
+          const bounds = new THREE.Box3().setFromObject(object)
+          const reach = Math.max(Math.abs(bounds.min.x), Math.abs(bounds.max.x))
+          if (reach > limit) object.visible = false
+        })
+
+        onFramed({ headY, height })
         setVrm(loaded)
       },
       () => {

@@ -63,13 +63,14 @@ class DeepgramTts:
         self._client = AsyncDeepgramClient(api_key=api_key)
         self._model = model
 
-    async def synthesize(self, text: str, voice: str) -> AsyncIterator[bytes]:
+    async def synthesize(self, text: str, voice: str, rate: float = 1.0) -> AsyncIterator[bytes]:
         # A character's configured voice wins; the constructor default is only
         # a fallback for packs that do not name one.
         async with self._client.speak.v1.connect(
             model=voice or self._model,
             encoding="linear16",
             sample_rate=TTS_SAMPLE_RATE,
+            speed=rate,
         ) as connection:
             await connection.send_text(SpeakV1Text(type="Speak", text=text))
             await connection.send_flush()

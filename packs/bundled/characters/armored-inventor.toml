@@ -12,7 +12,7 @@ Keep replies to two or three sentences unless asked to go deeper.
 """
 
 [voice]
-provider_voice = "aura-2-orion-en"
+provider_voice = "aura-2-thalia-en"
 rate = 1.08
 
 [theme]

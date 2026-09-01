@@ -54,7 +54,8 @@ class Session:
             gesture, emotion = expression.infer(reply, self._character)
             yield ServerMessage.expression(gesture=gesture, emotion=emotion)
 
-            async for chunk in self._tts.synthesize(reply, self._character.voice.provider_voice):
+            voice = self._character.voice
+            async for chunk in self._tts.synthesize(reply, voice.provider_voice, voice.rate):
                 yield ServerMessage.audio(chunk)
 
     async def _audio(self) -> AsyncIterator[bytes]:

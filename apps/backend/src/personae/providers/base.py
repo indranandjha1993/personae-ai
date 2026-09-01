@@ -31,6 +31,6 @@ class LlmProvider(Protocol):
 class TtsProvider(Protocol):
     """Streaming text-to-speech."""
 
-    def synthesize(self, text: str, voice: str) -> AsyncIterator[bytes]:
-        """Yield PCM audio frames for ``text``."""
+    def synthesize(self, text: str, voice: str, rate: float = 1.0) -> AsyncIterator[bytes]:
+        """Yield PCM audio frames for ``text`` in ``voice`` at ``rate``."""
         ...
