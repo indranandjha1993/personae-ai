@@ -10,6 +10,7 @@ import logging
 from collections.abc import AsyncIterator
 
 from deepgram import AsyncDeepgramClient
+from deepgram.speak.v1.types.speak_v1text import SpeakV1Text
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,7 @@ class DeepgramTts:
             encoding="linear16",
             sample_rate=TTS_SAMPLE_RATE,
         ) as connection:
-            await connection.send_text(text)
+            await connection.send_text(SpeakV1Text(type="Speak", text=text))
             await connection.send_flush()
             await connection.send_close()
             async for message in connection:
