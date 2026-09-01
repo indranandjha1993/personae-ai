@@ -5,9 +5,13 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TypedDict
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, WebSocket
+from starlette.websockets import WebSocketDisconnect
 
 from personae.packs.loader import CharacterRegistry, load_packs
+from personae.protocol import AudioFrame, ServerMessage
+from personae.providers.mock import MockLlm, MockStt, MockTts
+from personae.session import MalformedMessageError, Session, decode
 from personae.settings import Settings
 
 
@@ -90,7 +94,44 @@ def create_app() -> FastAPI:
             ]
         }
 
+    @app.websocket("/ws/session/{pack}/{character}")
+    async def session(socket: WebSocket, pack: str, character: str) -> None:
+        registry: CharacterRegistry = socket.state.characters
+        try:
+            persona = registry.get(f"{pack}/{character}")
+        except KeyError:
+            # Refuse before accepting, so the client sees a failed handshake
+            # rather than an open socket that immediately dies.
+            await socket.close(code=4004, reason="unknown character")
+            return
+
+        await socket.accept()
+        turn = Session(persona, MockStt(), MockLlm(), MockTts())
+        try:
+            await _drive(socket, turn)
+        except WebSocketDisconnect:
+            return
+
     return app
+
+
+async def _drive(socket: WebSocket, turn: Session) -> None:
+    """Read inbound frames until the client stops, then stream the reply."""
+    while True:
+        try:
+            message = decode(await socket.receive_text())
+        except MalformedMessageError:
+            await socket.send_json(ServerMessage.error("malformed message").model_dump())
+            continue
+        if isinstance(message, AudioFrame):
+            await turn.offer(message)
+            continue
+        await turn.close_input()
+        break
+
+    async for outbound in turn.run():
+        await socket.send_json(outbound.model_dump())
+    await socket.send_json({"type": "done"})
 
 
 app = create_app()
