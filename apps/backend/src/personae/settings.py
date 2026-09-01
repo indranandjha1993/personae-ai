@@ -1,10 +1,26 @@
 """Typed application configuration, loaded from the environment."""
 
+from pathlib import Path
 from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ProviderMode = Literal["mock", "live"]
+
+
+def env_file_path() -> Path:
+    """Locate the repository .env regardless of the working directory.
+
+    The backend is normally launched from apps/backend while .env sits at the
+    repository root. Resolving it relative to the working directory silently
+    ignores the file, which is indistinguishable from settings that were never
+    applied -- so search upward for the checkout marker instead.
+    """
+    here = Path(__file__).resolve()
+    for candidate in here.parents:
+        if (candidate / "packs" / "bundled" / "pack.toml").is_file():
+            return candidate / ".env"
+    return Path(".env")
 
 
 class Settings(BaseSettings):
@@ -17,7 +33,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="PERSONAE_",
-        env_file=".env",
+        env_file=env_file_path(),
         env_file_encoding="utf-8",
         extra="ignore",
         frozen=True,
