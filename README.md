@@ -81,7 +81,7 @@ never emit a gesture the frontend has no animation for.
 
 ## Getting started
 
-**Prerequisites:** Python 3.12+ with [`uv`](https://docs.astral.sh/uv/), Node 20+.
+**Prerequisites:** Python 3.13+ with [`uv`](https://docs.astral.sh/uv/), Node 20+.
 No API keys required.
 
 ```bash
@@ -122,14 +122,15 @@ npm run lint
 npm run typecheck
 ```
 
-Tests are written before implementation, and CI runs the full suite on Python 3.12 and 3.13
+Tests are written before implementation, and CI runs the full suite on Python 3.13 and 3.14, on both Linux and macOS
 for every push and pull request.
 
 ## Roadmap
 
 - [x] Repository, licensing, and contributor tooling
-- [ ] Typed configuration and character-pack loader
-- [ ] Provider interfaces with mock implementations
+- [x] Typed configuration and provider interfaces
+- [ ] Character-pack loader
+- [ ] Mock provider implementations
 - [ ] WebSocket session protocol
 - [ ] Vertical slice: mic → backend → audio response
 - [ ] Deepgram STT/TTS and LLM providers

@@ -33,9 +33,13 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: apps/backend/uv.lock
+          # Without this the key is derived from the runner's system Python, so
+          # every matrix leg races to write the same entry.
+          cache-suffix: py${{ matrix.python }}
+          python-version: ${{ matrix.python }}
 
       - name: Install dependencies
-        run: uv sync --locked --python ${{ matrix.python }}
+        run: uv sync --locked
 
       - name: Lint
         run: uv run ruff check --output-format=github .
