@@ -2,11 +2,9 @@ import { describe, expect, it } from 'vitest'
 
 import {
   ACTIVITY_POSE,
-  MOUTH_AT_REST,
   mouthOpenness,
   toPose,
   toVrmEmotion,
-  visemeWeights,
   VISEMES,
 } from './expression-map'
 
@@ -87,26 +85,3 @@ describe('ACTIVITY_POSE', () => {
   })
 })
 
-describe('visemeWeights', () => {
-  it('leans on the open vowel as loudness rises', () => {
-    expect(visemeWeights(0.9).aa).toBeGreaterThan(visemeWeights(0.2).aa)
-  })
-
-  it('favours a narrower shape when quiet', () => {
-    expect(visemeWeights(0.05).ih).toBeGreaterThan(visemeWeights(0.9).ih)
-  })
-
-  it('keeps every weight within the valid range', () => {
-    for (const openness of [0, 0.25, 0.5, 0.75, 1]) {
-      for (const weight of Object.values(visemeWeights(openness))) {
-        expect(weight).toBeGreaterThanOrEqual(0)
-        expect(weight).toBeLessThanOrEqual(1)
-      }
-    }
-  })
-
-  it('leaves the mouth slightly open at rest, so the face is not blank', () => {
-    expect(MOUTH_AT_REST).toBeGreaterThan(0)
-    expect(MOUTH_AT_REST).toBeLessThan(0.35)
-  })
-})

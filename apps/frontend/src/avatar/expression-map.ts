@@ -102,12 +102,3 @@ export function mouthOpenness(rms: number): number {
 /** Resting mouth openness; fully closed lips read as no mouth at all. */
 export const MOUTH_AT_REST = 0.22
 
-/** Spreads openness across visemes; one shape alone moves like a hinge. */
-export function visemeWeights(openness: number): { aa: number; ih: number; ou: number } {
-  return {
-    aa: openness * 0.85,
-    // Quieter passages read as narrower shapes, louder ones as rounder.
-    ih: Math.max(0, 0.35 - openness * 0.35),
-    ou: Math.max(0, openness - 0.55) * 0.5,
-  }
-}

@@ -18,7 +18,6 @@ import {
   mouthOpenness,
   toPose,
   toVrmEmotion,
-  visemeWeights,
   type Activity,
 } from './expression-map'
 
@@ -83,7 +82,6 @@ export function Avatar({
 
         VRMUtils.removeUnnecessaryVertices(gltf.scene)
         VRMUtils.combineSkeletons(gltf.scene)
-        VRMUtils.combineMorphs(loaded)
         // Normalises VRM 0.x orientation; VRM 1.0 already faces the camera.
         VRMUtils.rotateVRM0(loaded)
 
@@ -165,10 +163,10 @@ export function Avatar({
 
     const expressions = vrm.expressionManager
     if (expressions) {
-      const visemes = visemeWeights(s.mouth)
-      expressions.setValue('aa', visemes.aa)
-      expressions.setValue('ih', visemes.ih)
-      expressions.setValue('ou', visemes.ou)
+      // One viseme only. Blending several stacks their morphs past full weight
+      // at speech volumes, which distorts the face -- on this model it dragged
+      // the eyes shut while talking.
+      expressions.setValue('aa', s.mouth)
 
       // Emotion morphs on many models also close the eyes -- this one's
       // 'happy' is a closed-eye smile -- so a full-weight expression leaves
