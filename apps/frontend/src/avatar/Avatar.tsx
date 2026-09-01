@@ -79,12 +79,16 @@ export function Avatar({
         // Removing unused vertices and joints measurably improves frame time.
         VRMUtils.removeUnnecessaryVertices(loaded.scene)
         VRMUtils.combineSkeletons(loaded.scene)
-        loaded.scene.rotation.y = Math.PI // face the camera
+        // VRM 0.x models face -Z and 1.0 models face +Z, so a hardcoded flip
+        // turns one of them around. rotateVRM0 normalises 0.x and does nothing
+        // to 1.0, which is exactly the difference.
+        VRMUtils.rotateVRM0(loaded)
 
         // Frame on the face: expression is what this shows, and a portrait
         // avoids depending on how well the body happens to be rigged.
         const headNode = loaded.humanoid.getNormalizedBoneNode('head')
         const box = new THREE.Box3().setFromObject(loaded.scene)
+        loaded.scene.updateMatrixWorld(true)
         const headY = headNode
           ? new THREE.Vector3().setFromMatrixPosition(headNode.matrixWorld).y
           : box.max.y * 0.93
