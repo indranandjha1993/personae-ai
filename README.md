@@ -128,6 +128,23 @@ someone's first utterance.
 docker compose up --build
 ```
 
+## The avatar
+
+Characters are rendered as 3D [VRM](https://vrm.dev/) models. Gestures drive arm, head, and
+torso poses; emotions map onto VRM expression presets; and the mouth follows the loudness of
+the audio being played, so speech stays in sync by construction rather than by timing.
+
+**No model ships with the project.** VRM files are large and carry their own licences, so
+supply one yourself:
+
+1. Get a `.vrm` model -- [VRoid Hub](https://hub.vroid.com/) has free avatars, and
+   [VRoid Studio](https://vroid.com/en/studio) lets you make your own.
+2. Save it as `apps/frontend/public/avatar.vrm`.
+3. Reload the page.
+
+Until then the viewport explains what is missing and the conversation still works. The 3D
+stack is loaded on demand, so the initial bundle is unaffected if you never add a model.
+
 ## Development
 
 ```bash
@@ -156,7 +173,7 @@ for every push and pull request.
 - [x] Vertical slice: browser mic → backend → audio playback
 - [x] Deepgram STT/TTS and LLM providers
 - [x] Gesture and emotion inference (vocabulary-constrained)
-- [ ] Avatar rendering and lip-sync
+- [x] Avatar rendering and lip-sync
 
 ## Contributing
 
