@@ -1,0 +1,39 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# --- Node ---
+node_modules/
+.vite/
+coverage/
+*.tsbuildinfo
+
+# --- Environment / secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- Local character packs -------------------------------------------------
+# Personal or licensed character packs live here and are never committed.
+# See docs/character-packs.md.
+packs/local/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
