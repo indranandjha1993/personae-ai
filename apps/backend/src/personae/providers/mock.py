@@ -12,7 +12,9 @@ import asyncio
 import math
 from collections.abc import AsyncIterator
 
-_SAMPLE_RATE = 24_000
+from personae.protocol import PLAYBACK_SAMPLE_RATE
+
+_SAMPLE_RATE = PLAYBACK_SAMPLE_RATE
 _TONE_HZ = 220.0
 _SILENCE_THRESHOLD = 12  # mean absolute sample value below which audio is silence
 

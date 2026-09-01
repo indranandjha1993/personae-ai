@@ -15,6 +15,10 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator
 # two seconds, which is far above the ~100 ms frames the client actually sends.
 MAX_FRAME_BYTES = 64_000
 
+# Sample rate of the audio streamed back to clients. Providers synthesise at
+# this rate, and the client is told it on connect rather than assuming it.
+PLAYBACK_SAMPLE_RATE = 24_000
+
 
 class _Message(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")

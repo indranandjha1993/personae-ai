@@ -12,10 +12,12 @@ from collections.abc import AsyncIterator
 from deepgram import AsyncDeepgramClient
 from deepgram.speak.v1.types.speak_v1text import SpeakV1Text
 
+from personae.protocol import PLAYBACK_SAMPLE_RATE
+
 logger = logging.getLogger(__name__)
 
 STT_SAMPLE_RATE = 16_000
-TTS_SAMPLE_RATE = 24_000
+TTS_SAMPLE_RATE = PLAYBACK_SAMPLE_RATE
 
 
 class DeepgramStt:
