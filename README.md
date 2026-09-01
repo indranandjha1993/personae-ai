@@ -129,8 +129,8 @@ for every push and pull request.
 
 - [x] Repository, licensing, and contributor tooling
 - [x] Typed configuration and provider interfaces
-- [ ] Character-pack loader
-- [ ] Mock provider implementations
+- [x] Character-pack loader
+- [x] Mock provider implementations
 - [ ] WebSocket session protocol
 - [ ] Vertical slice: mic → backend → audio response
 - [ ] Deepgram STT/TTS and LLM providers
