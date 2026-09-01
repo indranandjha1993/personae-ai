@@ -107,6 +107,6 @@ describe('visemeWeights', () => {
 
   it('leaves the mouth slightly open at rest, so the face is not blank', () => {
     expect(MOUTH_AT_REST).toBeGreaterThan(0)
-    expect(MOUTH_AT_REST).toBeLessThan(0.2)
+    expect(MOUTH_AT_REST).toBeLessThan(0.35)
   })
 })

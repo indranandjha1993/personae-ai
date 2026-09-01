@@ -108,8 +108,13 @@ export function mouthOpenness(rms: number): number {
   return Math.min(1, normalised ** 0.6)
 }
 
-/** How far open the mouth sits when silent, so the face is not blank. */
-export const MOUTH_AT_REST = 0.08
+/**
+ * How far open the mouth sits when silent.
+ *
+ * This model draws closed lips very faintly, so a nearly shut mouth reads as
+ * no mouth at all. A clearly parted rest position is what makes it visible.
+ */
+export const MOUTH_AT_REST = 0.22
 
 /**
  * Distribute mouth openness across visemes.

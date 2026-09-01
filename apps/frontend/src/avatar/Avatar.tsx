@@ -102,15 +102,16 @@ export function Avatar({
           : box.max.y * 0.93
         onFramed({ headY, height: box.max.y - box.min.y })
 
-        // Move the arms out of shot rather than posing or shrinking them. Rest
-        // poses differ between models, so a rotation that lowers one model's
-        // arms raises another's; and scaling a bone to nothing leaves its
-        // skinned vertices bunched at the joint, which shows as a blob beside
-        // the face. Translating the bone takes the geometry with it.
-        for (const name of ['leftUpperArm', 'rightUpperArm'] as const) {
-          const bone = loaded.humanoid.getNormalizedBoneNode(name)
-          if (bone) bone.position.y -= 10
-        }
+        // Hide everything that is not head, hair, or clothing. Body parts are
+        // separate meshes rather than geometry skinned to the arm bones, so
+        // moving or scaling those bones leaves them on screen -- this model
+        // carries a 'robo_arm' mesh that appeared beside the face.
+        loaded.scene.traverse((object) => {
+          const name = object.name.toLowerCase()
+          if (name.includes('arm') || name.includes('hand') || name.includes('leg')) {
+            object.visible = false
+          }
+        })
         setVrm(loaded)
       },
       () => {
