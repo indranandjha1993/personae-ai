@@ -10,6 +10,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from personae.packs.loader import CharacterRegistry, load_packs
 from personae.protocol import AudioFrame, ServerMessage
+from personae.providers.deepgram import TTS_SAMPLE_RATE
 from personae.providers.base import LlmProvider, SttProvider, TtsProvider
 from personae.providers.factory import build_llm, build_stt, build_tts
 from personae.session import MalformedMessageError, Session, decode
@@ -118,6 +119,9 @@ def create_app() -> FastAPI:
             return
 
         await socket.accept()
+        # Announced rather than assumed: the client cannot guess the synthesis
+        # rate, and playing at the wrong one shifts pitch and speed.
+        await socket.send_json(ServerMessage.ready(TTS_SAMPLE_RATE).model_dump())
         turn = Session(persona, socket.state.stt, socket.state.llm, socket.state.tts)
         try:
             await _drive(socket, turn)

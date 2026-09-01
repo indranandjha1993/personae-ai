@@ -18,6 +18,7 @@ def client() -> Iterator[TestClient]:
 
 
 def _collect(socket: object, limit: int = 40) -> list[dict[str, object]]:
+    """Drain messages up to and including the terminal 'done'."""
     messages: list[dict[str, object]] = []
     for _ in range(limit):
         message = socket.receive_json()  # type: ignore[attr-defined]
@@ -62,6 +63,7 @@ def test_expression_is_drawn_from_the_character_vocabulary(client: TestClient) -
 
 def test_malformed_message_yields_an_error_not_a_crash(client: TestClient) -> None:
     with client.websocket_connect("/ws/session/bundled/armored-inventor") as socket:
+        socket.receive_json()  # ready
         socket.send_json({"type": "audio", "pcm": "not base64!!"})
         message = socket.receive_json()
     assert message["type"] == "error"
@@ -69,6 +71,7 @@ def test_malformed_message_yields_an_error_not_a_crash(client: TestClient) -> No
 
 def test_non_json_payload_is_rejected_cleanly(client: TestClient) -> None:
     with client.websocket_connect("/ws/session/bundled/armored-inventor") as socket:
+        socket.receive_json()  # ready
         socket.send_text("<not json>")
         message = socket.receive_json()
     assert message["type"] == "error"
@@ -81,3 +84,14 @@ def test_silence_produces_no_transcript(client: TestClient) -> None:
         kinds = [message["type"] for message in _collect(socket)]
     assert "transcript" not in kinds
     assert kinds[-1] == "done"
+
+
+def test_session_announces_the_audio_format_before_sending_audio(client: TestClient) -> None:
+    """The client must not have to hardcode the sample rate.
+
+    Playing the samples at the wrong rate shifts pitch and speed, and a
+    constant duplicated across two languages will eventually disagree.
+    """
+    with client.websocket_connect("/ws/session/bundled/armored-inventor") as socket:
+        first = socket.receive_json()
+    assert first == {"type": "ready", "sample_rate": 24000, "channels": 1}

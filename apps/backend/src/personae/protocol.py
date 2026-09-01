@@ -61,6 +61,10 @@ class ServerMessage(_Message):
     """Base for outbound messages, with constructors for each variant."""
 
     @staticmethod
+    def ready(sample_rate: int, channels: int = 1) -> "ReadyMessage":
+        return ReadyMessage(type="ready", sample_rate=sample_rate, channels=channels)
+
+    @staticmethod
     def transcript(text: str) -> "TranscriptMessage":
         return TranscriptMessage(type="transcript", text=text)
 
@@ -79,6 +83,14 @@ class ServerMessage(_Message):
     @staticmethod
     def error(detail: str) -> "ErrorMessage":
         return ErrorMessage(type="error", detail=detail)
+
+
+class ReadyMessage(ServerMessage):
+    """Sent once on connect, describing the audio the client will receive."""
+
+    type: Literal["ready"]
+    sample_rate: int
+    channels: int
 
 
 class TranscriptMessage(ServerMessage):
