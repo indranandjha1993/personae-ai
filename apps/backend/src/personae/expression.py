@@ -33,11 +33,58 @@ _GESTURE_HINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
 
 
 def infer(text: str, character: Character) -> tuple[str, str]:
-    """Return a (gesture, emotion) pair valid for ``character``."""
+    """Return a (gesture, emotion) pair valid for ``character``.
+
+    Keyword hints alone leave most real replies on the resting pair, because a
+    model rarely writes the exact words in the table. Punctuation and shape are
+    therefore used as a second signal, so ordinary sentences still animate.
+    """
     lowered = text.lower()
-    gesture = _first_match(lowered, _GESTURE_HINTS, character.expression.gestures)
-    emotion = _first_match(lowered, _EMOTION_HINTS, character.expression.emotions)
+    gestures = character.expression.gestures
+    emotions = character.expression.emotions
+
+    gesture = _first_match(lowered, _GESTURE_HINTS, gestures)
+    if gesture == gestures[0]:
+        gesture = _shape_gesture(text, gestures)
+
+    emotion = _first_match(lowered, _EMOTION_HINTS, emotions)
+    if emotion == emotions[0]:
+        emotion = _shape_emotion(text, emotions)
+
     return gesture, emotion
+
+
+def _shape_gesture(text: str, allowed: tuple[str, ...]) -> str:
+    """Fall back to sentence shape when no keyword matched."""
+    stripped = text.strip()
+    if not stripped:
+        return allowed[0]
+    if stripped.endswith("?"):
+        return _prefer(("gesture-point", "gesture-consider", "gesture-indicate"), allowed)
+    if len(stripped) > 90:
+        return _prefer(("gesture-explain", "gesture-declaim"), allowed)
+    return allowed[0]
+
+
+def _shape_emotion(text: str, allowed: tuple[str, ...]) -> str:
+    stripped = text.strip()
+    if not stripped:
+        return allowed[0]
+    if "!" in stripped:
+        return _prefer(("amused", "delighted", "indignant"), allowed)
+    if stripped.endswith("?"):
+        return _prefer(("focused", "alert", "wry"), allowed)
+    if len(stripped) > 90:
+        return _prefer(("focused", "solemn"), allowed)
+    return allowed[0]
+
+
+def _prefer(candidates: tuple[str, ...], allowed: tuple[str, ...]) -> str:
+    """Pick the first candidate this character can actually perform."""
+    for candidate in candidates:
+        if candidate in allowed:
+            return candidate
+    return allowed[0]
 
 
 def _first_match(
