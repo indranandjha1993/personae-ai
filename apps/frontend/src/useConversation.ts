@@ -118,9 +118,9 @@ export function useConversation(characterId: string): Conversation {
             setStatus('thinking')
             break
           case 'reply':
+            // The text closes the turn rather than opening it: sentences are
+            // spoken as they arrive, so by the time this lands she has said it.
             setReply(message.text)
-            // A new reply is unspoken until her audio for it has played.
-            setReplySpoken(false)
             break
           case 'expression':
             setGesture(message.gesture)

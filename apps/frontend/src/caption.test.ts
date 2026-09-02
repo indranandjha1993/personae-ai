@@ -17,3 +17,17 @@ describe('visibleCaption', () => {
     expect(visibleCaption('', true, false)).toBe('')
   })
 })
+
+describe('when audio precedes the text', () => {
+  it('shows her words once the reply arrives at the end of a turn', () => {
+    // Sentences are synthesised as they stream, so the reply message is the
+    // last thing in a turn rather than the first. Treating it as the start of
+    // an unspoken reply withheld the caption forever.
+    const spoken = true
+    expect(visibleCaption('All done.', spoken, false)).toBe('All done.')
+  })
+
+  it('still withholds a reply that genuinely has not been spoken', () => {
+    expect(visibleCaption('Not yet said.', false, false)).toBe('')
+  })
+})
