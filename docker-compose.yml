@@ -1,0 +1,26 @@
+# Brings up the whole thing on one port. The frontend serves the app and
+# proxies the conversation through to the backend, so only one is published.
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    env_file: .env
+    environment:
+      # Bare defaults so the stack still runs with an empty .env: without keys
+      # each provider falls back to a stand-in.
+      PERSONAE_LLM_WIRE: ${PERSONAE_LLM_WIRE:-openai}
+    restart: unless-stopped
+    expose:
+      - "8000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+    ports:
+      - "${PERSONAE_PORT:-47465}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped

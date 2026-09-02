@@ -133,8 +133,17 @@ names its own voice overrides `PERSONAE_TTS_VOICE`.
 ### Docker
 
 ```bash
-docker compose up --build
+cp .env.example .env      # optional; it runs without keys
+docker compose up -d --build
 ```
+
+Then open <http://localhost:47465>. One port is published: the frontend serves
+the app and proxies the conversation through to the backend, which is not
+reachable from outside the compose network. Set `PERSONAE_PORT` to publish
+somewhere else.
+
+Both containers restart unless you stop them, so the stack survives a crash or
+a reboot. `docker compose down` stops it.
 
 ## Live conversation
 
