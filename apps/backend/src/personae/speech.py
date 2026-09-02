@@ -29,9 +29,14 @@ def farewell_marked(reply: str) -> bool:
     return _FAREWELL.search(reply) is not None
 
 
+# Anywhere, not just at the end: sentences are spoken as they stream, so a
+# marker mid-reply would otherwise be read aloud before the turn closes.
+_FAREWELL_ANYWHERE = re.compile(r"\s*\[\s*end\s*\]\s*", re.IGNORECASE)
+
+
 def strip_farewell(reply: str) -> str:
     """Remove the marker; it is never spoken and never shown."""
-    return _FAREWELL.sub("", reply).strip()
+    return _FAREWELL_ANYWHERE.sub(" ", reply).strip()
 
 
 def for_speech(text: str) -> str:

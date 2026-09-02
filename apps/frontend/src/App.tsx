@@ -75,7 +75,7 @@ function useVoiceLight(
 function Conversation({ characterId, name }: { characterId: string; name: string }) {
   const {
     status, transcript, reply, gesture, emotion, detail,
-    features, replySpoken, cameraStream, cameraOn, toggleCamera, start, stop,
+    features, spokenSoFar, turnFinished, turnId, cameraStream, cameraOn, toggleCamera, start, stop,
   } = useConversation(characterId)
   const active = status !== 'idle' && status !== 'error'
   const stage = useRef<HTMLDivElement>(null)
@@ -86,7 +86,7 @@ function Conversation({ characterId, name }: { characterId: string; name: string
   // actually finished saying them -- the reply text arrives before the first
   // audio chunk, so status alone would show it during the pause beforehand.
   const [liveCaptions, setLiveCaptions] = useState(true)
-  const caption = visibleCaption(reply, replySpoken, liveCaptions)
+  const caption = visibleCaption(spokenSoFar, reply, turnFinished, liveCaptions)
 
   return (
     <section aria-label="Conversation">
@@ -151,7 +151,7 @@ function Conversation({ characterId, name }: { characterId: string; name: string
           </p>
         )}
         {caption !== '' && (
-          <p className="line" data-from="her" key={caption} style={{ '--who': `'${name} — '` } as React.CSSProperties}>
+          <p className="line" data-from="her" key={turnId} style={{ '--who': `'${name} — '` } as React.CSSProperties}>
             {caption}
           </p>
         )}

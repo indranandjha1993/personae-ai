@@ -37,3 +37,10 @@ def test_the_persona_forbids_inventing_a_name_for_the_listener() -> None:
 
     prompt = load_packs([REPO_ROOT / "packs" / "bundled"]).get("bundled/seed").persona.prompt
     assert "never guess one and never invent one" in prompt.lower()
+
+
+def test_the_marker_is_stripped_wherever_it_lands_in_a_stream() -> None:
+    """Sentences are spoken as they arrive, so a marker in the middle of one
+    would be read aloud."""
+    assert "[end]" not in for_speech("Bye now. [end] Wait, one more thing.")
+    assert "end" not in for_speech("Done. [END]").lower().replace("done", "")

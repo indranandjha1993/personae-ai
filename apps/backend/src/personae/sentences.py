@@ -9,9 +9,35 @@ still being written.
 import re
 from collections.abc import Iterator
 
+# Titles and abbreviations that end in a full stop without ending a sentence.
+_ABBREVIATIONS = (
+    "mr",
+    "mrs",
+    "ms",
+    "dr",
+    "prof",
+    "sr",
+    "jr",
+    "st",
+    "e.g",
+    "i.e",
+    "etc",
+    "vs",
+    "approx",
+    "no",
+)
+
 # A sentence ends at punctuation followed by a space or the end of what has
-# arrived so far, but not mid-number.
-_SENTENCE_END = re.compile(r"(?<!\d)([.!?])(?=\s|$)")
+# arrived so far. It does not end mid-number, inside an ellipsis, after a
+# single initial, or after one of the abbreviations above.
+_SENTENCE_END = re.compile(
+    r"(?<!\d)"  # not a decimal point
+    r"(?<![A-Z])"  # not a lone initial: J. R. R.
+    r"(?<!\.\.)"  # not the tail of an ellipsis
+    r"([.!?])"
+    r"(?!\.)"  # not the start of one either
+    r"(?=\s|$)"
+)
 
 # The opening is cut at the first comma so she starts sooner. Long enough to be
 # worth saying on its own, short enough that the pause before it is brief.
@@ -39,14 +65,33 @@ class SentenceBuffer:
                 yield opening.group(1).strip()
 
         while True:
-            match = _SENTENCE_END.search(self._pending)
+            match = self._next_end()
             if not match:
+                return
+            # A run of dots at the very end of what has arrived may be the head
+            # of an ellipsis whose tail is in the next fragment. Waiting one
+            # fragment costs nothing and avoids speaking a bare "..".
+            if self._pending[match.end() :] == "" and self._pending.rstrip().endswith(".."):
                 return
             sentence = self._pending[: match.end()].strip()
             self._pending = self._pending[match.end() :]
             if sentence:
                 self._released_any = True
                 yield sentence
+
+    def _next_end(self) -> re.Match[str] | None:
+        """Find the next real sentence end, stepping over abbreviations."""
+        start = 0
+        while True:
+            match = _SENTENCE_END.search(self._pending, start)
+            if not match:
+                return None
+            head = self._pending[: match.start()].rstrip().lower()
+            word = re.split(r"[\s(]", head)[-1] if head else ""
+            if word in _ABBREVIATIONS:
+                start = match.end()
+                continue
+            return match
 
     def flush(self) -> str:
         """Return whatever is left, for the end of the reply."""

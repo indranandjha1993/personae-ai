@@ -139,6 +139,16 @@ export class PcmPlayer {
     return out
   }
 
+  /** When the audio queued so far will have finished, on the context clock. */
+  get scheduledUntil(): number {
+    return this.nextStartTime
+  }
+
+  /** The context clock, so callers can compare against scheduled times. */
+  get now(): number {
+    return this.context.currentTime
+  }
+
   /** Schedule one chunk of 16-bit PCM immediately after whatever precedes it. */
   enqueue(samples: Int16Array): void {
     if (samples.length === 0) return

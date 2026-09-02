@@ -134,6 +134,10 @@ class ServerMessage(_Message):
         return TranscriptMessage(type="transcript", text=text)
 
     @staticmethod
+    def speaking(text: str) -> "SpeakingMessage":
+        return SpeakingMessage(type="speaking", text=text)
+
+    @staticmethod
     def reply(text: str) -> "ReplyMessage":
         return ReplyMessage(type="reply", text=text)
 
@@ -168,6 +172,13 @@ class ReadyMessage(ServerMessage):
 
 class TranscriptMessage(ServerMessage):
     type: Literal["transcript"]
+    text: str
+
+
+class SpeakingMessage(ServerMessage):
+    """The sentence she is about to say, sent just before its audio."""
+
+    type: Literal["speaking"]
     text: str
 
 

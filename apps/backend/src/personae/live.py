@@ -126,6 +126,9 @@ class LiveSession:
                             ServerMessage.expression(gesture=gesture, emotion=emotion)
                         )
                         first = False
+                    # Announced before its audio, so the caption can follow her
+                    # voice rather than arriving in one block at the end.
+                    await outbound.put(ServerMessage.speaking(speakable))
                     async for chunk in self._tts.synthesize(
                         speakable, voice.provider_voice, voice.rate
                     ):
@@ -185,7 +188,9 @@ class LiveSession:
                 # it re-raise here would also skip the history write below.
                 with contextlib.suppress(asyncio.CancelledError, Exception):
                     await task
-            # Kept even when cut off: this is what she actually said aloud.
+            # The whole reply the model produced, not only the part that
+            # reached the speaker: a barge-in can cut playback short, and she
+            # should remember what she meant to say.
             self._history.add(Turn(user=transcript, assistant=spoken))
 
     async def _audio(self) -> AsyncIterator[bytes]:

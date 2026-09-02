@@ -17,13 +17,17 @@ import { openSession, type Session } from './session'
 
 export type Status = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error'
 
-/** Long enough for the tail of her goodbye to finish playing. */
-const FAREWELL_GRACE_MS = 1200
+/** Give up waiting for a goodbye to finish after this. */
+const FAREWELL_MAX_WAIT_MS = 15_000
 
 export interface Conversation {
   status: Status
-  /** True once she has finished speaking the current reply. */
-  replySpoken: boolean
+  /** What she has said so far this turn, growing sentence by sentence. */
+  spokenSoFar: string
+  /** True once the whole reply has been delivered and heard. */
+  turnFinished: boolean
+  /** Increments per reply, so the caption animates once rather than per sentence. */
+  turnId: number
   /** The camera stream, for a self-view, or null when the camera is off. */
   cameraStream: MediaStream | null
   cameraOn: boolean
@@ -48,7 +52,12 @@ export function useConversation(characterId: string): Conversation {
   const [gesture, setGesture] = useState('idle')
   const [emotion, setEmotion] = useState('neutral')
   const [detail, setDetail] = useState('')
-  const [replySpoken, setReplySpoken] = useState(false)
+  const [spokenSoFar, setSpokenSoFar] = useState('')
+  const [turnFinished, setTurnFinished] = useState(false)
+  const [playbackDone, setPlaybackDone] = useState(false)
+  const [turnId, setTurnId] = useState(0)
+  const queued = useRef<{ text: string; playedBy: number | null }[]>([])
+  const suppressing = useRef(false)
 
   const captureRef = useRef<Capture | null>(null)
   const sessionRef = useRef<Session | null>(null)
@@ -109,18 +118,33 @@ export function useConversation(characterId: string): Conversation {
       onMessage: (message) => {
         switch (message.type) {
           case 'transcript':
+            suppressing.current = false
             setTranscript(message.text)
-            setReplySpoken(false)
+            // A new turn starts with nothing said yet.
+            setReply('')
+            setSpokenSoFar('')
+            setTurnFinished(false)
+            setPlaybackDone(false)
+            queued.current = []
+            setTurnId((previous) => previous + 1)
             // A new turn: whatever was cut off before is finished with, and
             // the next utterance gets a fresh still.
             bargeInRef.current.reset()
             frameSentRef.current = false
             setStatus('thinking')
             break
+          case 'speaking':
+            if (suppressing.current) break
+            // Held until its audio has actually played. The socket delivers
+            // far faster than real time, so revealing on arrival would put the
+            // whole reply on screen while she is still on the first sentence.
+            queued.current.push({ text: message.text, playedBy: null })
+            break
           case 'reply':
-            // The text closes the turn rather than opening it: sentences are
-            // spoken as they arrive, so by the time this lands she has said it.
+            // Closes the turn. The full text supersedes what was accumulated,
+            // so anything the splitter dropped is still shown.
             setReply(message.text)
+            setTurnFinished(true)
             break
           case 'expression':
             setGesture(message.gesture)
@@ -131,8 +155,16 @@ export function useConversation(characterId: string): Conversation {
             playerRef.current = player
             break
           case 'audio':
+            if (suppressing.current) break
             spokenRef.current = true
             setStatus('speaking')
+            // The first chunk of a sentence fixes when that sentence ends.
+            for (const pending of queued.current) {
+              if (pending.playedBy === null) {
+                pending.playedBy = (playerRef.current?.scheduledUntil ?? 0) + 0.001
+                break
+              }
+            }
             if (!player) {
               player = new PcmPlayer(context, DEFAULT_SAMPLE_RATE)
               playerRef.current = player
@@ -140,29 +172,36 @@ export function useConversation(characterId: string): Conversation {
             player.enqueue(decodePcm(message.pcm))
             break
           case 'interrupted':
+            suppressing.current = false
             // She stopped because we spoke over her; go straight back to
             // listening rather than reporting an error. Whatever she managed
             // to say is now on the record.
             playerRef.current?.stop()
             spokenRef.current = false
-            setReplySpoken(true)
+            setTurnFinished(true)
             setStatus('listening')
             break
-          case 'farewell':
-            // She has finished saying goodbye; let the last audio drain, then
-            // close the way a call ends rather than cutting her off.
-            window.setTimeout(() => {
-              teardown()
-              setStatus('idle')
-            }, FAREWELL_GRACE_MS)
+          case 'farewell': {
+            // Wait for the goodbye to actually finish. A fixed delay cut her
+            // off mid-word, because the audio is queued long before it plays.
+            const started = Date.now()
+            const closing = window.setInterval(() => {
+              const done = playerRef.current?.isFinished() ?? true
+              if (done || Date.now() - started > FAREWELL_MAX_WAIT_MS) {
+                window.clearInterval(closing)
+                teardown()
+                setStatus('idle')
+              }
+            }, 150)
             break
+          }
           case 'error':
             setDetail(message.detail)
             teardown()
             setStatus('error')
             break
           case 'done':
-            setReplySpoken(true)
+            setTurnFinished(true)
             teardown()
             setStatus('idle')
             break
@@ -208,6 +247,10 @@ export function useConversation(characterId: string): Conversation {
           spokenRef.current = false
           bargeInRef.current.reset()
           player.stop()
+          // Messages already in flight would otherwise restart her audio and
+          // add sentences to the caption that were never heard.
+          suppressing.current = true
+          queued.current = []
           session.interrupt()
           setStatus('listening')
         }
@@ -254,16 +297,29 @@ export function useConversation(characterId: string): Conversation {
   // it in state would re-render the whole tree 60 times a second.
   const loudness = useCallback(() => playerRef.current?.currentLoudness() ?? 0, [])
 
-  // The player knows when its own queue has drained. Loudness cannot tell us:
-  // audio is scheduled ahead of real time, so it is silent before the first
-  // chunk sounds and again between sentences.
+  // Caption and teardown both run on the player's clock rather than on message
+  // arrival: audio is delivered far faster than it is heard, so anything keyed
+  // to the socket shows the words seconds before she says them.
   useEffect(() => {
     if (status !== 'speaking') return
-    const timer = window.setInterval(() => {
-      if (playerRef.current?.isFinished() === true) setReplySpoken(true)
-    }, 120)
-    return () => { window.clearInterval(timer) }
+    const tick = window.setInterval(() => {
+      const player = playerRef.current
+      if (!player) return
+
+      const heard = queued.current.filter(
+        (pending) => pending.playedBy !== null && pending.playedBy <= player.now,
+      )
+      if (heard.length > 0) {
+        queued.current = queued.current.filter((pending) => !heard.includes(pending))
+        setSpokenSoFar((said) =>
+          [said, ...heard.map((pending) => pending.text)].filter(Boolean).join(' '),
+        )
+      }
+      if (player.isFinished() && queued.current.length === 0) setPlaybackDone(true)
+    }, 100)
+    return () => { window.clearInterval(tick) }
   }, [status])
+
 
   // Reused between frames so the render loop allocates nothing.
   const featureScratch = useRef<AudioFeatures>({ ...SILENT_FEATURES })
@@ -283,7 +339,9 @@ export function useConversation(characterId: string): Conversation {
     detail,
     loudness,
     features,
-    replySpoken,
+    spokenSoFar,
+    turnFinished: turnFinished && playbackDone,
+    turnId,
     cameraStream,
     cameraOn: cameraStream !== null,
     toggleCamera,

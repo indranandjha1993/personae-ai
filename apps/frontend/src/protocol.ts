@@ -16,6 +16,11 @@ export interface TranscriptMessage {
   text: string
 }
 
+export interface SpeakingMessage {
+  type: 'speaking'
+  text: string
+}
+
 export interface ReplyMessage {
   type: 'reply'
   text: string
@@ -51,6 +56,7 @@ export interface DoneMessage {
 
 export type ServerMessage =
   | ReadyMessage
+  | SpeakingMessage
   | TranscriptMessage
   | ReplyMessage
   | AudioMessage
@@ -75,6 +81,7 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
         : null
     case 'transcript':
     case 'reply':
+    case 'speaking':
       return typeof raw['text'] === 'string'
         ? { type: raw['type'], text: raw['text'] }
         : null

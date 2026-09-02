@@ -255,3 +255,32 @@ async def test_every_sentence_is_spoken() -> None:
     await _drain(session)
 
     assert "".join(spoken).replace(" ", "") == "Onething.Thenanother."
+
+
+async def test_each_sentence_is_announced_before_its_audio() -> None:
+    """The caption should follow her voice, so the client needs to know which
+    sentence is being spoken as it is spoken."""
+    llm = SlowLlm(["First thought. ", "Second thought."], 0.0)
+    session = LiveSession(_character(), ScriptedStt(["hi"]), llm, SilentTts())
+    await session.offer(b"\x10\x20" * 40)
+    await session.close_input()
+
+    messages = [m.model_dump() async for m in session.run()]
+    spoken = [m["text"] for m in messages if m["type"] == "speaking"]
+    assert spoken == ["First thought.", "Second thought."]
+
+    # Each announcement must precede the audio it describes.
+    kinds = [m["type"] for m in messages]
+    assert kinds.index("speaking") < kinds.index("audio")
+
+
+async def test_the_farewell_marker_is_never_announced() -> None:
+    llm = SlowLlm(["Goodbye. [end]"], 0.0)
+    session = LiveSession(_character(), ScriptedStt(["bye"]), llm, SilentTts())
+    await session.offer(b"\x10\x20" * 40)
+    await session.close_input()
+
+    spoken = [
+        m.model_dump()["text"] async for m in session.run() if m.model_dump()["type"] == "speaking"
+    ]
+    assert all("[end]" not in text for text in spoken)

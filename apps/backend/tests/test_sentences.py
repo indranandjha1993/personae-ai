@@ -58,3 +58,40 @@ def test_nothing_left_after_a_flush() -> None:
     _feed(buffer, "Done.")
     buffer.flush()
     assert buffer.flush() == ""
+
+
+def test_does_not_split_after_a_common_abbreviation() -> None:
+    """Splitting on "Dr." makes her say the title, pause, then the name."""
+    buffer = SentenceBuffer()
+    assert _feed(buffer, "Dr. Smith called about it. ") == ["Dr. Smith called about it."]
+
+
+def test_does_not_split_inside_an_ellipsis() -> None:
+    # Deepgram renders an ellipsis as a thinking pause; breaking it loses that.
+    buffer = SentenceBuffer()
+    assert _feed(buffer, "Well... I suppose so. ") == ["Well... I suppose so."]
+
+
+def test_does_not_split_after_a_single_initial() -> None:
+    buffer = SentenceBuffer()
+    assert _feed(buffer, "It was J. R. R. Tolkien. ") == ["It was J. R. R. Tolkien."]
+
+
+def test_ellipsis_split_across_fragments_is_never_spoken_alone() -> None:
+    """A dot run at the end of a fragment may be the head of an ellipsis."""
+    buffer = SentenceBuffer()
+    spoken: list[str] = []
+    for fragment in ("Hmm.", "..", "maybe."):
+        spoken.extend(buffer.feed(fragment))
+    spoken.append(buffer.flush())
+
+    assert [text for text in spoken if text] == ["Hmm.", "..maybe."]
+
+
+def test_a_held_dot_run_is_still_released_at_the_end() -> None:
+    """Whatever is held back must not be swallowed when the reply stops."""
+    buffer = SentenceBuffer()
+    spoken = list(buffer.feed("Trailing off.."))
+    spoken.append(buffer.flush())
+
+    assert "".join(spoken) == "Trailing off.."
