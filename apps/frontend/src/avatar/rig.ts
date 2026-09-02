@@ -10,7 +10,7 @@
 import type * as THREE from 'three'
 import type { VRM, VRMHumanBoneName } from '@pixiv/three-vrm'
 
-import type { ArmPose, BodyPose } from './gestures'
+import type { ArmPose, BodyPose, Motion } from './gestures'
 
 /**
  * Roll that brings this model's arms from its raised bind pose down to the
@@ -100,6 +100,38 @@ function applyArm(vrm: VRM, side: Side, pose: ArmPose, shoulderLift: number): vo
 export function applyBodyPose(vrm: VRM, pose: BodyPose): void {
   applyArm(vrm, 'left', pose.left, pose.shoulderLift)
   applyArm(vrm, 'right', pose.right, pose.shoulderLift)
+}
+
+/**
+ * Play a motion, additively, on top of the already-applied pose.
+ *
+ * `seconds` counts from when the gesture began. Each motion runs a few cycles
+ * and dies away on its own -- people nod twice and stop, they do not
+ * metronome until the sentence ends.
+ */
+export function applyMotion(vrm: VRM, motion: Motion, seconds: number): void {
+  // Two-ish visible cycles, then gone.
+  const envelope = Math.exp(-seconds * 1.1)
+  if (envelope < 0.01) return
+
+  switch (motion) {
+    case 'nod': {
+      const head = vrm.humanoid.getNormalizedBoneNode('head')
+      if (head) head.rotation.x += Math.sin(seconds * 2 * Math.PI * 1.7) * 0.12 * envelope
+      break
+    }
+    case 'shake': {
+      const head = vrm.humanoid.getNormalizedBoneNode('head')
+      if (head) head.rotation.y += Math.sin(seconds * 2 * Math.PI * 2.1) * 0.15 * envelope
+      break
+    }
+    case 'wave': {
+      // The forearm pivots at the elbow, which is how a real wave moves.
+      const forearm = vrm.humanoid.getNormalizedBoneNode('rightLowerArm')
+      if (forearm) forearm.rotation.y += Math.sin(seconds * 2 * Math.PI * 2.3) * 0.28 * envelope
+      break
+    }
+  }
 }
 
 /** The roll that returns this model's arms to its sides, for callers that need it. */

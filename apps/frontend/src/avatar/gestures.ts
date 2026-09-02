@@ -34,9 +34,19 @@ export interface ArmPose {
   spread: number
 }
 
+/**
+ * A repeating movement layered over the held pose.
+ *
+ * A nod, a head-shake, or a wave is not a position but an oscillation: it
+ * plays a couple of cycles when the gesture lands and dies away on its own.
+ */
+export type Motion = 'nod' | 'shake' | 'wave'
+
 export interface BodyPose {
   left: ArmPose
   right: ArmPose
+  /** Movement that plays when the gesture begins, if any. */
+  motion?: Motion
   /** Rotation of the upper body about the vertical. */
   torsoTwist: number
   /** Forward lean from the waist. */
@@ -172,6 +182,35 @@ const GESTURES: Record<string, BodyPose> = {
     left: arm({ upperForward: 0.1, elbow: 0.3 }),
     torsoLean: 0.04,
     headTilt: -0.05,
+  }),
+
+  // Everyday agreement: a couple of nods, the body barely involved.
+  'gesture-yes': body({
+    motion: 'nod',
+    headTilt: 0.02,
+  }),
+
+  // Everyday refusal: the head shakes while one palm turns out, the
+  // hand half of saying no.
+  'gesture-no': body({
+    motion: 'shake',
+    right: arm({ upperForward: 0.62, upperOut: 0.2, elbow: 1.15, wrist: -0.35, curl: 0.08, spread: 0.3 }),
+  }),
+
+  // A raised hand waving hello or goodbye, the forearm doing the moving.
+  'gesture-wave': body({
+    motion: 'wave',
+    right: arm({ upperForward: 0.5, upperOut: 0.7, elbow: 1.5, wrist: 0, curl: 0.06, spread: 0.3 }),
+    headTilt: -0.04,
+  }),
+
+  // Palms together at the chest with a small bow: a pranam, offered the way
+  // it is in daily life rather than theatrically.
+  'gesture-namaste': body({
+    left: arm({ upperForward: 0.75, upperOut: -0.15, upperTwist: -0.3, elbow: 1.9, wrist: -0.15, curl: 0.02, spread: 0 }),
+    right: arm({ upperForward: 0.75, upperOut: -0.15, upperTwist: 0.3, elbow: 1.9, wrist: -0.15, curl: 0.02, spread: 0 }),
+    torsoLean: 0.06,
+    headTilt: 0.16,
   }),
 
   // Palms down, settling: calm, or slowing something down.

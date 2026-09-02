@@ -128,8 +128,9 @@ class LiveSession:
                     # She marks her own gestures: only she knows that "I'm not
                     # sure" wants a shrug. Where she marks nothing, the text is
                     # read for a cue, so plain replies still move.
-                    marked = gesture_marks(text)
-                    spoken_text = strip_gesture_marks(text)
+                    vocabulary = self._character.expression.gestures
+                    marked = gesture_marks(text, vocabulary)
+                    spoken_text = strip_gesture_marks(text, vocabulary)
                     speakable = for_speech(spoken_text)
                     if not speakable:
                         return
@@ -188,7 +189,9 @@ class LiveSession:
                     return
 
                 ending = farewell_marked(spoken)
-                spoken = strip_gesture_marks(strip_farewell(spoken))
+                spoken = strip_gesture_marks(
+                    strip_farewell(spoken), self._character.expression.gestures
+                )
                 # The caption follows the speech rather than preceding it.
                 await outbound.put(ServerMessage.reply(spoken))
 

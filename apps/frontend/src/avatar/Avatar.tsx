@@ -18,7 +18,7 @@ import { EmphasisTracker } from './emphasis'
 import { LipSync } from './lip-sync'
 import { GazeController } from './gaze'
 import { blendPoses, REST, toBodyPose } from './gestures'
-import { applyBodyPose } from './rig'
+import { applyBodyPose, applyMotion } from './rig'
 import {
   ACTIVITY_POSE,
   toVrmEmotion,
@@ -104,6 +104,8 @@ export function Avatar({
   })
   const clock = useRef(0)
   const posed = useRef(REST)
+  const motionClock = useRef(0)
+  const lastGesture = useRef('idle')
   const gaze = useRef(new GazeController())
   const blink = useRef(new BlinkController())
   const focus = useRef(new THREE.Vector3())
@@ -181,6 +183,13 @@ export function Avatar({
     // The pose eases toward the gesture rather than snapping: a hand that
     // arrives instantly reads as a cut, not a movement.
     const wanted = toBodyPose(gesture)
+    // A motion plays from the moment its gesture lands, so the clock restarts
+    // on every change rather than running from page load.
+    if (gesture !== lastGesture.current) {
+      lastGesture.current = gesture
+      motionClock.current = 0
+    }
+    motionClock.current += delta
     posed.current = blendPoses(posed.current, wanted, Math.min(1, delta * GESTURE_EASE))
     applyBodyPose(vrm, posed.current)
     const target = { headTilt: posed.current.headTilt, torsoTwist: posed.current.torsoTwist }
@@ -226,6 +235,10 @@ export function Avatar({
       chest.rotation.y = s.torsoTwist * 0.4
       chest.rotation.x = breath * 0.6 - lift * 0.04 + s.lean * 0.25
     }
+
+    // After the absolute head and arm writes, so the oscillation rides on top
+    // of the pose instead of being overwritten by it.
+    if (wanted.motion) applyMotion(vrm, wanted.motion, motionClock.current)
 
     const blinkCtl = blink.current
     const expressions = vrm.expressionManager

@@ -63,3 +63,23 @@ describe('easing between gestures', () => {
     expect(half.left.upperForward).toBeLessThan(to.left.upperForward)
   })
 })
+
+describe('everyday motions', () => {
+  it.each(['gesture-yes', 'gesture-no', 'gesture-wave'] as const)(
+    '%s carries a movement, not only a pose',
+    (name) => {
+      // A nod or a wave is an oscillation; a held position would read as a
+      // freeze-frame of one.
+      expect(toBodyPose(name).motion).toBeDefined()
+    },
+  )
+
+  it('namaste is symmetric, unlike the speaking gestures', () => {
+    // Palms meet in the middle; this is the one gesture where matched arms
+    // are the point rather than a puppet tell.
+    const pose = toBodyPose('gesture-namaste')
+    expect(pose.left.upperForward).toBe(pose.right.upperForward)
+    expect(pose.left.elbow).toBe(pose.right.elbow)
+    expect(pose.headTilt).toBeGreaterThan(0)
+  })
+})

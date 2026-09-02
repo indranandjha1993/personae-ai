@@ -30,16 +30,32 @@ def test_a_gesture_she_cannot_make_falls_back_to_the_text() -> None:
     assert gesture in character.expression.gestures
 
 
+VOCAB = _character().expression.gestures
+
+
 def test_the_marker_is_never_spoken() -> None:
-    assert strip_gesture_marks("*shrug* I have no idea.") == "I have no idea."
+    assert strip_gesture_marks("*shrug* I have no idea.", VOCAB) == "I have no idea."
+
+
+def test_a_marker_missing_its_closing_star_still_works() -> None:
+    """Models miswrite the marker often enough to plan for; left alone it is
+    read aloud and printed in the caption."""
+    assert gesture_marks("*wave Sure, I can.", VOCAB) == ["wave"]
+    assert strip_gesture_marks("*wave Sure, I can.", VOCAB) == "Sure, I can."
+
+
+def test_emphasis_is_not_a_gesture() -> None:
+    """A starred word outside her vocabulary keeps the word: treating it as a
+    mark would delete something she meant to say."""
+    assert gesture_marks("She said *really* loudly.", VOCAB) == []
+    assert strip_gesture_marks("She said *really* loudly.", VOCAB) == "She said really loudly."
 
 
 def test_several_marks_are_read_in_order() -> None:
-    marks = gesture_marks("*consider* Well. *explain* It works like this.")
+    marks = gesture_marks("*consider* Well. *explain* It works like this.", VOCAB)
     assert marks == ["consider", "explain"]
 
 
 def test_ordinary_text_is_left_alone() -> None:
-    """Asterisks are rare in speech, but emphasis must not become a gesture."""
-    assert gesture_marks("She said it was fine.") == []
-    assert strip_gesture_marks("She said it was fine.") == "She said it was fine."
+    assert gesture_marks("She said it was fine.", VOCAB) == []
+    assert strip_gesture_marks("She said it was fine.", VOCAB) == "She said it was fine."

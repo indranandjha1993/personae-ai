@@ -36,7 +36,7 @@ def test_the_persona_forbids_inventing_a_name_for_the_listener() -> None:
     from personae.packs.loader import load_packs
 
     prompt = load_packs([REPO_ROOT / "packs" / "bundled"]).get("bundled/seed").persona.prompt
-    assert "never guess one and never invent one" in prompt.lower()
+    assert "never guess or invent one" in prompt.lower()
 
 
 def test_the_marker_is_stripped_wherever_it_lands_in_a_stream() -> None:

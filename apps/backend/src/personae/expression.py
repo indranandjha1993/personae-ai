@@ -24,6 +24,9 @@ _EMOTION_HINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 
 _GESTURE_HINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    # The everyday ones first, so a goodbye waves rather than explains.
+    ("gesture-wave", ("goodbye", "bye", "see you")),
+    ("gesture-namaste", ("namaste", "pranam")),
     ("gesture-explain", ("because", "so", "means", "works")),
     ("gesture-point", ("there", "this", "that", "look")),
     ("gesture-declaim", ("hear", "behold", "truly", "indeed")),

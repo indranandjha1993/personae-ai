@@ -6,6 +6,7 @@ guard for when the model produces them anyway.
 """
 
 import re
+from collections.abc import Collection
 
 _EMOJI = re.compile("[\U0001f300-\U0001faff\U00002600-\U000027bf\U0001f1e6-\U0001f1ff️⭐❤]+")
 _URL = re.compile(r"https?://([^\s/]+)\S*")
@@ -67,12 +68,47 @@ def for_speech(text: str) -> str:
 # knows what she means, so she is asked to say.
 _GESTURE_MARK = re.compile(r"\*\s*([a-z][a-z-]{1,20})\s*\*")
 
+# Models miswrite the marker often enough to plan for: a leading "*wave" with
+# the closing asterisk forgotten is still unmistakably a mark, and left alone
+# it is read aloud and printed in the caption.
+_GESTURE_MARK_UNCLOSED = re.compile(r"(?:^\s*|(?<=[.!?] ))\*+\s*([a-z][a-z-]{1,20})\b\*?")
 
-def gesture_marks(reply: str) -> list[str]:
-    """Gestures the reply asks for, in the order they appear."""
-    return [match.group(1).lower() for match in _GESTURE_MARK.finditer(reply)]
+
+def gesture_marks(reply: str, known: Collection[str]) -> list[str]:
+    """Gestures the reply asks for, in the order they appear.
+
+    Only words in ``known`` count: a starred word that is not in the
+    character's vocabulary is emphasis, not a gesture, and treating it as one
+    would delete a word she meant to say.
+    """
+    names = _mark_words(known)
+    marks = [m.group(1).lower() for m in _GESTURE_MARK.finditer(reply)]
+    remainder = _GESTURE_MARK.sub(" ", reply).lstrip()
+    marks.extend(m.group(1).lower() for m in _GESTURE_MARK_UNCLOSED.finditer(remainder))
+    return [mark for mark in marks if mark in names]
 
 
-def strip_gesture_marks(reply: str) -> str:
-    """Remove the markers; they are never spoken and never shown."""
-    return re.sub(r"\s{2,}", " ", _GESTURE_MARK.sub(" ", reply)).strip()
+def strip_gesture_marks(reply: str, known: Collection[str]) -> str:
+    """Remove the markers; they are never spoken and never shown.
+
+    A starred word outside the vocabulary keeps its word and loses only the
+    asterisks: this is a voice, and no sentence says an asterisk aloud.
+    """
+    names = _mark_words(known)
+
+    def keep_or_drop(match: re.Match[str]) -> str:
+        return " " if match.group(1).lower() in names else f" {match.group(1)} "
+
+    text = _GESTURE_MARK.sub(keep_or_drop, reply)
+    text = _GESTURE_MARK_UNCLOSED.sub(keep_or_drop, text.lstrip())
+    text = text.replace("*", " ")
+    return re.sub(r"\s{2,}", " ", text).strip()
+
+
+def _mark_words(known: Collection[str]) -> set[str]:
+    """Vocabulary names as they appear in a marker, prefix and bare."""
+    names = set()
+    for name in known:
+        names.add(name.lower())
+        names.add(name.lower().removeprefix("gesture-"))
+    return names
