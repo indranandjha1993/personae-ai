@@ -1,13 +1,36 @@
 :root {
-  --bg: #0b0d12;
-  --surface: #14171f;
-  --surface-2: #1b1f29;
-  --border: #262b36;
-  --text: #e8ebf2;
-  --muted: #8f98ab;
-  --accent: #7c8cff;
-  --live: #4ade80;
-  --danger: #f87171;
+  /* Near-black with violet warmth. Blue-grey reads as a terminal. */
+  --bg: #0b0912;
+  --bg-deep: #060509;
+  --surface: #16121f;
+  --border: #2a2438;
+  --border-soft: #1e1929;
+
+  /* Warm ivory, never blue-white: paper and lamplight rather than screen. */
+  --text: #f1ede4;
+  --muted: #9a92a6;
+  --faint: #625b70;
+
+  --accent: #8b7fd4;
+  --accent-bright: #b7a9ff;
+  --accent-deep: #4f4590;
+
+  /* Lamplight gold: attention turned toward you. */
+  --listen: #e3c58f;
+  --danger: #e0716c;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --t-micro: 140ms;
+  --t-state: 400ms;
+  --t-ambient: 700ms;
+
+  --font-ui: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-voice: 'Source Serif 4', 'Iowan Old Style', Georgia, serif;
+  --font-brand: 'Fraunces', 'Iowan Old Style', Georgia, serif;
+
+  /* Written per animation frame from the audio; never React state. */
+  --voice: 0;
   color-scheme: dark;
 }
 
@@ -16,15 +39,13 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background:
-    radial-gradient(1200px 600px at 50% -10%, #1a1f2e 0%, transparent 60%),
-    var(--bg);
+  background: var(--bg);
   color: var(--text);
-  font: 16px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font: 15px/1.55 var(--font-ui);
 }
 
 .app {
-  max-width: 46rem;
+  max-width: 52rem;
   margin: 0 auto;
   padding: 2.5rem 1.5rem 4rem;
 }
@@ -40,9 +61,8 @@ body {
 
 .wordmark {
   margin: 0;
-  font-size: 1.35rem;
-  font-weight: 650;
-  letter-spacing: -0.02em;
+  font: 550 1.3rem/1.2 var(--font-brand);
+  letter-spacing: -0.01em;
 }
 
 .wordmark span { color: var(--muted); font-weight: 400; }
@@ -51,63 +71,294 @@ body {
 
 .stage-frame {
   position: relative;
-  border-radius: 20px;
+  height: min(58vh, 32rem);
+  border-radius: 24px;
   overflow: hidden;
-  border: 1px solid var(--border);
-  background: linear-gradient(180deg, #1a2030 0%, #0f1219 100%);
-  /* Sized by height so the controls and transcript stay above the fold. */
-  height: min(46vh, 22rem);
+  border: 1px solid var(--border-soft);
+  background: var(--bg-deep);
+  animation: house-lights 1100ms var(--ease-out) both;
+}
+
+@keyframes house-lights {
+  from { opacity: 0; }
 }
 
 .stage { position: absolute; inset: 0; }
 
-/* Status floats over the stage rather than taking a row of its own. */
-.badge {
+/* Pools of light cross-faded by conversation state. A gradient cannot be
+   animated, so the layers are stacked and their opacity is what moves. */
+.stage-light {
   position: absolute;
-  top: 1rem;
-  left: 1rem;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.35rem 0.75rem;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--t-ambient) var(--ease-in-out);
+}
+
+.stage-light--idle {
+  background: radial-gradient(90% 70% at 50% 30%, #171226 0%, transparent 65%);
+  opacity: 1;
+}
+
+.stage-light--listen {
+  background: radial-gradient(80% 65% at 50% 32%, #241b14 0%, transparent 62%);
+}
+
+.stage-light--speak {
+  background: radial-gradient(85% 70% at 50% 28%, #251b45 0%, transparent 65%);
+}
+
+.stage-frame[data-state='listening'] .stage-light--listen { opacity: 1; }
+/* The room dims while she thinks. */
+.stage-frame[data-state='thinking'] .stage-light--idle { opacity: 0.45; }
+.stage-frame[data-state='speaking'] .stage-light--speak {
+  opacity: calc(0.55 + var(--voice) * 0.45);
+}
+
+/* Vignette and a lower fade, so the frame edge does not read as a box
+   cropping her off. */
+.stage-frame::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, transparent 62%, rgba(6, 5, 9, 0.65) 97%),
+    radial-gradient(120% 90% at 50% 38%, transparent 55%, rgba(6, 5, 9, 0.5) 100%);
+}
+
+/* Dark radial gradients band on most panels; grain is the fix, and the
+   texture is a welcome side effect. */
+.stage-grain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.035;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* State as behaviour of light rather than another colour swatch. */
+.hearth {
+  height: 2px;
+  margin: 10px 12% 0;
   border-radius: 999px;
-  background: rgba(11, 13, 18, 0.72);
+  background: linear-gradient(90deg, transparent, currentColor 25%, currentColor 75%, transparent);
+  color: var(--faint);
+  opacity: 0.35;
+  transform-origin: center;
+  transition: color var(--t-state) var(--ease-in-out), opacity var(--t-state) var(--ease-in-out);
+}
+
+.hearth[data-state='listening'] {
+  color: var(--listen);
+  animation: breathe 2.8s var(--ease-in-out) infinite;
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.45; transform: scaleX(0.94); }
+  50% { opacity: 0.8; transform: scaleX(1); }
+}
+
+/* A highlight travelling the line: work in progress, without a spinner. */
+.hearth[data-state='thinking'] {
+  opacity: 0.7;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--accent-deep) 35%,
+    var(--accent-bright) 50%,
+    var(--accent-deep) 65%,
+    transparent
+  );
+  background-size: 250% 100%;
+  animation: shimmer 1.7s var(--ease-in-out) infinite;
+}
+
+@keyframes shimmer {
+  from { background-position: 120% 0; }
+  to { background-position: -20% 0; }
+}
+
+/* Literally her voice: --voice is written every frame. */
+.hearth[data-state='speaking'] {
+  color: var(--accent-bright);
+  opacity: calc(0.3 + var(--voice) * 0.7);
+  transform: scaleX(calc(0.55 + var(--voice) * 0.45));
+  transition: none;
+}
+
+.status {
+  position: absolute;
+  left: 1.1rem;
+  bottom: 0.95rem;
+  font: 500 0.7rem/1 var(--font-ui);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  transition: opacity 200ms var(--ease-out);
+}
+
+.status[data-state='idle'] { opacity: 0; }
+
+
+/* --- controls ------------------------------------------------------- */
+
+/* A centred call bar reads as a conversation; a settings row does not. */
+.controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.9rem;
+  margin-top: 1.4rem;
+}
+
+.talk {
+  height: 3.25rem;
+  padding: 0 1.75rem;
+  border: 0;
+  border-radius: 999px;
+  font: 600 0.95rem var(--font-ui);
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  background: var(--accent);
+  color: #14102a;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 8px 24px -12px rgba(139, 127, 212, 0.55);
+  transition:
+    transform var(--t-micro) var(--ease-out),
+    box-shadow var(--t-micro) var(--ease-out),
+    background var(--t-state) var(--ease-in-out);
+}
+
+.talk:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 12px 28px -12px rgba(139, 127, 212, 0.75);
+}
+
+.talk:active { transform: translateY(0) scale(0.98); transition-duration: 60ms; }
+.talk[data-active='true'] { background: var(--danger); color: #2a0f0e; }
+.talk:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 3px; }
+
+.icon-toggle {
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  background: transparent;
   border: 1px solid var(--border);
-  backdrop-filter: blur(8px);
-  font-size: 0.8rem;
+  color: var(--muted);
+  transition:
+    color var(--t-micro) var(--ease-out),
+    border-color var(--t-micro) var(--ease-out),
+    background var(--t-state) var(--ease-in-out);
+}
+
+.icon-toggle:hover { color: var(--text); border-color: var(--muted); }
+
+.icon-toggle[aria-pressed='true'] {
+  background: var(--surface);
+  color: var(--accent-bright);
+  border-color: var(--accent-deep);
+}
+
+.icon-toggle:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 3px; }
+
+/* Screenplay rather than instant messages: her line in a serif, yours small
+   and muted, both centred. */
+.transcript {
+  max-width: 34rem;
+  margin: 2rem auto 0;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.line { margin: 0; animation: settle 360ms var(--ease-out) both; }
+
+.line[data-from='you'] {
+  font: 400 0.85rem/1.5 var(--font-ui);
   color: var(--muted);
 }
 
-.badge::before {
-  content: '';
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-  background: var(--muted);
+.line[data-from='you']::before {
+  content: 'you — ';
+  letter-spacing: 0.08em;
+  color: var(--faint);
 }
 
-.badge[data-state='listening']::before { background: var(--live); }
-.badge[data-state='thinking']::before { background: #fbbf24; }
-.badge[data-state='speaking']::before { background: var(--accent); }
-.badge[data-state='error']::before { background: var(--danger); }
-
-/* A quiet ring while she listens, so the page feels awake. */
-.badge[data-state='listening']::after {
-  content: '';
-  position: absolute;
-  inset: -3px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--live) 45%, transparent);
-  animation: pulse 2s ease-out infinite;
+.line[data-from='her'] {
+  font: 420 1.15rem/1.6 var(--font-voice);
+  color: var(--text);
 }
 
-@keyframes pulse {
-  0% { opacity: 0.8; transform: scale(1); }
-  100% { opacity: 0; transform: scale(1.12); }
+/* Attributed by name, the way a screenplay marks who is speaking. */
+.line[data-from='her']::before {
+  content: var(--who, 'her — ');
+  font: 500 0.7rem var(--font-ui);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  display: block;
+  margin-bottom: 0.35rem;
 }
+
+@keyframes settle {
+  from { opacity: 0; transform: translateY(6px); filter: blur(4px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+
+
+
+
 
 @media (prefers-reduced-motion: reduce) {
-  .badge[data-state='listening']::after { animation: none; opacity: 0.5; }
+  .hearth,
+  .stage-frame { animation: none !important; }
+  .hearth[data-state='speaking'] { transform: none !important; }
+  .line { animation-duration: 1ms; }
+}
+
+.tagline {
+  margin: 0;
+  font: 500 0.7rem/1 var(--font-ui);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.colophon {
+  margin: 4rem 0 0;
+  text-align: center;
+  font-size: 0.68rem;
+  color: var(--faint);
+  opacity: 0.7;
+}
+
+.hint {
+  margin: 1.1rem auto 0;
+  max-width: 34rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.alert {
+  margin: 1.1rem auto 0;
+  max-width: 34rem;
+  text-align: center;
+  padding: 0.7rem 0.9rem;
+  border-radius: 10px;
+  border: 1px solid #7f2d2d;
+  background: #2a1414;
+  color: #fca5a5;
+  font-size: 0.85rem;
 }
 
 .self-view {
@@ -119,7 +370,7 @@ body {
   border: 1px solid var(--border);
   overflow: hidden;
   background: #000;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
 .self-view video {
@@ -129,120 +380,8 @@ body {
   transform: scaleX(-1);
 }
 
-.credit {
-  margin: 0.6rem 0 0;
-  color: var(--muted);
-  font-size: 0.72rem;
-  text-align: right;
-}
-
-/* --- controls ------------------------------------------------------- */
-
-.controls {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  margin: 1.25rem 0 0;
-}
-
-.talk {
-  border: 0;
-  border-radius: 10px;
-  padding: 0.7rem 1.4rem;
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-  background: var(--accent);
-  color: #0b1020;
-  transition: filter 120ms ease;
-}
-
-.talk:hover { filter: brightness(1.08); }
-.talk[data-active='true'] { background: var(--danger); color: #1a0b0b; }
-.talk:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
-
-.toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.55rem 0.9rem;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface);
-  color: var(--muted);
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-
-.toggle:hover { border-color: var(--muted); color: var(--text); }
-.toggle:has(input:checked) { border-color: var(--accent); color: var(--text); }
-.toggle:has(input:disabled) { opacity: 0.45; cursor: default; }
-.toggle input { accent-color: var(--accent); cursor: inherit; }
-
-.spacer { flex: 1; }
-
-/* --- transcript ----------------------------------------------------- */
-
-.transcript {
-  margin: 1.5rem 0 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.bubble {
-  max-width: 44rem;
-  padding: 0.75rem 1rem;
-  border-radius: 14px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  animation: rise 180ms ease-out;
-}
-
-.bubble[data-from='you'] {
-  align-self: flex-end;
-  background: var(--surface-2);
-  border-bottom-right-radius: 4px;
-}
-
-.bubble[data-from='her'] { border-bottom-left-radius: 4px; }
-
-.bubble b {
-  display: block;
-  margin-bottom: 0.15rem;
-  color: var(--muted);
-  font-size: 0.7rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-}
-
-@keyframes rise {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: none; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .bubble { animation: none; }
-}
-
-.hint, .alert {
-  margin: 1rem 0 0;
-  font-size: 0.85rem;
-}
-
-.hint { color: var(--muted); }
-
-.alert {
-  padding: 0.7rem 0.9rem;
-  border-radius: 10px;
-  border: 1px solid #7f2d2d;
-  background: #2a1414;
-  color: #fca5a5;
-}
-
 @media (max-width: 40rem) {
-  .stage-frame { height: min(38vh, 16rem); }
+  .stage-frame { height: min(46vh, 20rem); }
   .self-view { width: 5.5rem; }
+  .app { padding: 1.75rem 1rem 3rem; }
 }

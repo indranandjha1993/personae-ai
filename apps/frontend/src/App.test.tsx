@@ -6,7 +6,7 @@ import { App } from './App'
 // jsdom has no WebGL, so the 3D stage cannot render here.
 vi.mock('./avatar/AvatarStage', () => ({ AvatarStage: () => null }))
 
-const BODY = { characters: [{ id: 'bundled/seed', display_name: 'Seed' }] }
+const BODY = { characters: [{ id: 'bundled/seed', display_name: 'Wren' }] }
 
 beforeEach(() => {
   vi.stubGlobal(
@@ -34,7 +34,25 @@ describe('App', () => {
 
   it('offers a camera the conversation can see through', async () => {
     render(<App />)
-    expect(await screen.findByLabelText('Camera')).not.toBeChecked()
+    const camera = await screen.findByRole('button', { name: 'Camera' })
+    expect(camera).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('offers live captions for anyone who needs the text as she speaks', async () => {
+    render(<App />)
+    const captions = await screen.findByRole('button', { name: 'Live captions' })
+    expect(captions).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('leads with her name rather than the product', async () => {
+    render(<App />)
+    expect(await screen.findByRole('heading', { name: 'Wren' })).toBeInTheDocument()
+    expect(screen.getByText(/Wren's here/)).toBeInTheDocument()
+  })
+
+  it('credits the avatar, which its licence requires', async () => {
+    render(<App />)
+    expect(await screen.findByText(/VRM Public License/)).toBeInTheDocument()
   })
 
   it('reports a backend that cannot be reached', async () => {

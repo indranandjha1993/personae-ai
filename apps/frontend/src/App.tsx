@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 
+import type { AudioFeatures } from './audio/playback'
 import './styles.css'
 import { useConversation } from './useConversation'
 
@@ -32,69 +33,124 @@ export function App() {
   return (
     <div className="app">
       <header className="masthead">
-        <h1 className="wordmark">
-          Personae <span>AI</span>
-        </h1>
-        {character && <p className="hint">Talking with {character.display_name}</p>}
+        <h1 className="wordmark">{character?.display_name ?? 'Personae'}</h1>
+        <p className="tagline">Personae AI</p>
       </header>
       {loadError !== '' && <p className="alert" role="alert">{loadError}</p>}
-      {character && <Conversation characterId={character.id} />}
+      {character && <Conversation characterId={character.id} name={character.display_name} />}
+      {/* The avatar's licence requires attribution; it belongs at the foot of
+          the page rather than under her face. */}
+      <footer className="colophon">
+        Avatar: Seed-san by VirtualCast, Inc., under the VRM Public License 1.0
+      </footer>
     </div>
   )
 }
 
-function Conversation({ characterId }: { characterId: string }) {
+/**
+ * Drives a CSS variable from her voice, once per animation frame.
+ *
+ * Fast attack and slow release, so the light blooms on the first syllable and
+ * decays like a breath. Never React state: this changes sixty times a second.
+ */
+function useVoiceLight(
+  ref: React.RefObject<HTMLDivElement | null>,
+  features: () => AudioFeatures,
+): void {
+  useEffect(() => {
+    let frame = 0
+    let level = 0
+    const tick = (): void => {
+      const target = Math.min(1, features().rms * 3.2)
+      level = target > level ? level + (target - level) * 0.5 : level * 0.92
+      ref.current?.style.setProperty('--voice', level.toFixed(3))
+      frame = requestAnimationFrame(tick)
+    }
+    frame = requestAnimationFrame(tick)
+    return () => { cancelAnimationFrame(frame) }
+  }, [features, ref])
+}
+
+function Conversation({ characterId, name }: { characterId: string; name: string }) {
   const {
     status, transcript, reply, gesture, emotion, detail,
     features, cameraStream, cameraOn, toggleCamera, start, stop,
   } = useConversation(characterId)
   const active = status !== 'idle' && status !== 'error'
+  const stage = useRef<HTMLDivElement>(null)
+  useVoiceLight(stage, features)
+
+  // Her words appear once she has finished saying them: showing the text as it
+  // arrives spoils the line seconds before she speaks it. Purely derived, so
+  // there is no state to keep in step.
+  const [liveCaptions, setLiveCaptions] = useState(false)
+  const caption = liveCaptions || status !== 'speaking' ? reply : ''
 
   return (
     <section aria-label="Conversation">
-      <div className="stage-frame">
+      <div className="stage-frame" data-state={status} ref={stage}>
+        <div className="stage-light stage-light--idle" />
+        <div className="stage-light stage-light--listen" />
+        <div className="stage-light stage-light--speak" />
         <Suspense fallback={null}>
-          <AvatarStage
-            gesture={gesture}
-            emotion={emotion}
-            activity={status}
-            features={features}
-          />
+          <AvatarStage gesture={gesture} emotion={emotion} activity={status} features={features} />
         </Suspense>
-        <span className="badge" data-state={status}>
+        <div className="stage-grain" />
+        {cameraStream && <SelfView stream={cameraStream} />}
+        <span className="status" data-state={status} role="status" aria-live="polite">
           <span data-testid="status">{status}</span>
         </span>
-        {cameraStream && <SelfView stream={cameraStream} />}
       </div>
-      <p className="credit">Seed-san by VirtualCast, Inc. — VRM Public License 1.0</p>
+      <div className="hearth" data-state={status} aria-hidden="true" />
 
       <div className="controls">
         <button type="button" className="talk" data-active={active} onClick={active ? stop : start}>
           {active ? 'End conversation' : 'Start conversation'}
         </button>
 
-        <label className="toggle">
-          <input type="checkbox" checked={cameraOn} onChange={toggleCamera} />
-          Camera
-        </label>
+        <button
+          type="button"
+          className="icon-toggle"
+          aria-pressed={cameraOn}
+          aria-label="Camera"
+          onClick={toggleCamera}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true">
+            <rect x="2.5" y="6.5" width="13" height="11" rx="2.5" />
+            <path d="M15.5 10.5 21 7.8v8.4l-5.5-2.7z" />
+          </svg>
+        </button>
+
+        <button
+          type="button"
+          className="icon-toggle"
+          aria-pressed={liveCaptions}
+          aria-label="Live captions"
+          onClick={() => { setLiveCaptions((on) => !on) }}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true">
+            <rect x="2.5" y="5.5" width="19" height="13" rx="3" />
+            <path d="M7 12h3M13 12h4" strokeLinecap="round" />
+          </svg>
+        </button>
       </div>
 
       {!active && (
-        <p className="hint">She answers when you pause. Talk over her to cut in.</p>
+        <p className="hint">
+          {name}&apos;s here — she answers when you pause. Talk over her to cut in.
+        </p>
       )}
       {detail !== '' && <p className="alert" role="alert">{detail}</p>}
 
       <div className="transcript">
         {transcript !== '' && (
-          <p className="bubble" data-from="you">
-            <b>You</b>
+          <p className="line" data-from="you">
             {transcript}
           </p>
         )}
-        {reply !== '' && (
-          <p className="bubble" data-from="her">
-            <b>Her</b>
-            {reply}
+        {caption !== '' && (
+          <p className="line" data-from="her" key={caption} style={{ '--who': `'${name} — '` } as React.CSSProperties}>
+            {caption}
           </p>
         )}
       </div>

@@ -70,6 +70,9 @@ export function AvatarStage({
               light at Math.PI, which is what MToon is authored against. */}
           <directionalLight position={[1, 1, 1]} intensity={Math.PI} />
           <ambientLight intensity={0.6} />
+          {/* A rim light that moves with her head, which no amount of CSS
+              glow can imitate. Kept low so MToon's toon shading survives. */}
+          <directionalLight position={[-1.6, 1.4, -1.2]} intensity={0.7} color="#8b7fd4" />
           <Suspense fallback={null}>
             <Avatar
               modelUrl={MODEL_URL}
