@@ -1,7 +1,7 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 
 import './styles.css'
-import { useConversation, type Mode } from './useConversation'
+import { useConversation } from './useConversation'
 
 // The 3D stack is most of the bundle, so it loads on demand.
 const AvatarStage = lazy(() =>
@@ -21,9 +21,7 @@ export function App() {
     const controller = new AbortController()
     fetch('/api/characters', { signal: controller.signal })
       .then((response) => (response.ok ? response.json() : Promise.reject(new Error('failed'))))
-      .then((body: { characters: Character[] }) => {
-        setCharacter(body.characters[0] ?? null)
-      })
+      .then((body: { characters: Character[] }) => { setCharacter(body.characters[0] ?? null) })
       .catch((error: unknown) => {
         if (error instanceof Error && error.name === 'AbortError') return
         setLoadError('Could not reach the backend.')
@@ -32,82 +30,91 @@ export function App() {
   }, [])
 
   return (
-    <main>
-      <h1>Personae AI</h1>
-      <p className="tagline">Speak, and she answers aloud.</p>
+    <div className="app">
+      <header className="masthead">
+        <h1 className="wordmark">
+          Personae <span>AI</span>
+        </h1>
+        {character && <p className="hint">Talking with {character.display_name}</p>}
+      </header>
       {loadError !== '' && <p className="alert" role="alert">{loadError}</p>}
       {character && <Conversation characterId={character.id} />}
-    </main>
+    </div>
   )
 }
 
-function startLabel(mode: Mode, status: string): string {
-  if (status === 'idle' || status === 'error') {
-    return mode === 'live' ? 'Start conversation' : 'Start speaking'
-  }
-  return mode === 'live' ? 'End conversation' : 'Stop speaking'
-}
-
 function Conversation({ characterId }: { characterId: string }) {
-  const [mode, setMode] = useState<Mode>('turn')
-  const { status, transcript, reply, gesture, emotion, detail, loudness, start, stop } =
-    useConversation(characterId, mode)
+  const {
+    status, transcript, reply, gesture, emotion, detail,
+    loudness, cameraStream, cameraOn, toggleCamera, start, stop,
+  } = useConversation(characterId)
   const active = status !== 'idle' && status !== 'error'
 
   return (
-    <section className="panel" aria-label="Conversation">
-      <Suspense fallback={<div className="stage" />}>
-        <AvatarStage
-          gesture={gesture}
-          emotion={emotion}
-          activity={status}
-          loudness={loudness}
-        />
-      </Suspense>
-
-      <div className="row">
-        <button
-          type="button"
-          className="talk"
-          data-listening={active}
-          onClick={active ? stop : start}
-        >
-          {startLabel(mode, status)}
-        </button>
-        <span className="status" data-state={status}>
+    <section aria-label="Conversation">
+      <div className="stage-frame">
+        <Suspense fallback={null}>
+          <AvatarStage
+            gesture={gesture}
+            emotion={emotion}
+            activity={status}
+            loudness={loudness}
+          />
+        </Suspense>
+        <span className="badge" data-state={status}>
           <span data-testid="status">{status}</span>
         </span>
-        <label className="mode">
-          <input
-            type="checkbox"
-            checked={mode === 'live'}
-            disabled={active}
-            onChange={(event) => { setMode(event.target.checked ? 'live' : 'turn') }}
-          />
-          Live conversation
+        {cameraStream && <SelfView stream={cameraStream} />}
+      </div>
+      <p className="credit">Seed-san by VirtualCast, Inc. — VRM Public License 1.0</p>
+
+      <div className="controls">
+        <button type="button" className="talk" data-active={active} onClick={active ? stop : start}>
+          {active ? 'End conversation' : 'Start conversation'}
+        </button>
+
+        <label className="toggle">
+          <input type="checkbox" checked={cameraOn} onChange={toggleCamera} />
+          Camera
         </label>
       </div>
-      {mode === 'live' && !active && (
-        <p className="hint">
-          She listens continuously and answers when you pause. Talk over her to cut in.
-        </p>
-      )}
 
+      {!active && (
+        <p className="hint">She answers when you pause. Talk over her to cut in.</p>
+      )}
       {detail !== '' && <p className="alert" role="alert">{detail}</p>}
 
-      {transcript !== '' && (
-        <p className="line">
-          <span>You said</span>
-          {transcript}
-        </p>
-      )}
-
-      {reply !== '' && (
-        <p className="line">
-          <span>Reply</span>
-          {reply}
-        </p>
-      )}
+      <div className="transcript">
+        {transcript !== '' && (
+          <p className="bubble" data-from="you">
+            <b>You</b>
+            {transcript}
+          </p>
+        )}
+        {reply !== '' && (
+          <p className="bubble" data-from="her">
+            <b>Her</b>
+            {reply}
+          </p>
+        )}
+      </div>
     </section>
+  )
+}
+
+function SelfView({ stream }: { stream: MediaStream }) {
+  const video = useRef<HTMLVideoElement>(null)
+
+  useEffect(() => {
+    const element = video.current
+    if (!element) return
+    element.srcObject = stream
+    return () => { element.srcObject = null }
+  }, [stream])
+
+  return (
+    <div className="self-view">
+      <video ref={video} autoPlay muted playsInline aria-label="Your camera" />
+    </div>
   )
 }

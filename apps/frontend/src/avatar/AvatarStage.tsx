@@ -8,7 +8,6 @@ import { Avatar } from './Avatar'
 import { type Activity } from './expression-map'
 
 const MODEL_URL = '/models/seed-san.vrm'
-const MODEL_CREDIT = 'Seed-san by VirtualCast, Inc. — VRM Public License 1.0'
 
 export interface AvatarStageProps {
   gesture: string
@@ -58,8 +57,7 @@ export function AvatarStage({ gesture, emotion, activity, loudness }: AvatarStag
   }
 
   return (
-    <div className="stage-wrap">
-      <div className="stage">
+    <div className="stage">
         <Canvas camera={{ position: [0, 1.4, 0.55], fov: 26 }} gl={{ alpha: true }}>
           <FrameFace bounds={bounds} />
           {/* Matches the three-vrm basic example: one normalised directional
@@ -78,8 +76,6 @@ export function AvatarStage({ gesture, emotion, activity, loudness }: AvatarStag
             />
           </Suspense>
         </Canvas>
-      </div>
-      <p className="model-credit">{MODEL_CREDIT}</p>
     </div>
   )
 }

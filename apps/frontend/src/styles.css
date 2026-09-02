@@ -1,10 +1,13 @@
 :root {
-  --bg: #0f1115;
-  --surface: #171a21;
+  --bg: #0b0d12;
+  --surface: #14171f;
+  --surface-2: #1b1f29;
   --border: #262b36;
-  --text: #e6e9ef;
-  --muted: #939cad;
-  --accent: #6ea8fe;
+  --text: #e8ebf2;
+  --muted: #8f98ab;
+  --accent: #7c8cff;
+  --live: #4ade80;
+  --danger: #f87171;
   color-scheme: dark;
 }
 
@@ -12,160 +15,234 @@
 
 body {
   margin: 0;
-  background: var(--bg);
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 600px at 50% -10%, #1a1f2e 0%, transparent 60%),
+    var(--bg);
   color: var(--text);
   font: 16px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-main {
+.app {
   max-width: 46rem;
   margin: 0 auto;
-  padding: 3rem 1.5rem 4rem;
+  padding: 2.5rem 1.5rem 4rem;
 }
 
-h1 {
-  margin: 0 0 0.25rem;
-  font-size: 1.75rem;
+.masthead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 2rem;
+}
+
+.wordmark {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 650;
   letter-spacing: -0.02em;
 }
 
-.tagline {
-  margin: 0 0 2rem;
-  color: var(--muted);
-}
+.wordmark span { color: var(--muted); font-weight: 400; }
 
-/* Selection is shown by more than colour, so it survives colour-blindness
-   and greyscale. */
+/* --- stage ---------------------------------------------------------- */
 
-.panel {
+.stage-frame {
+  position: relative;
+  border-radius: 20px;
+  overflow: hidden;
   border: 1px solid var(--border);
-  background: var(--surface);
-  border-radius: 12px;
-  padding: 1.25rem 1.5rem;
+  background: linear-gradient(180deg, #1a2030 0%, #0f1219 100%);
+  /* Sized by height so the controls and transcript stay above the fold. */
+  height: min(46vh, 22rem);
 }
 
-.row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
+.stage { position: absolute; inset: 0; }
 
-.status {
+/* Status floats over the stage rather than taking a row of its own. */
+.badge {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.45rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(11, 13, 18, 0.72);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(8px);
+  font-size: 0.8rem;
   color: var(--muted);
-  font-size: 0.9rem;
 }
 
-.status::before {
+.badge::before {
   content: '';
-  width: 0.55rem;
-  height: 0.55rem;
+  width: 0.5rem;
+  height: 0.5rem;
   border-radius: 50%;
   background: var(--muted);
 }
 
-.status[data-state='listening']::before { background: #4ade80; }
-.status[data-state='thinking']::before { background: #fbbf24; }
-.status[data-state='speaking']::before { background: var(--accent); }
-.status[data-state='error']::before { background: #f87171; }
+.badge[data-state='listening']::before { background: var(--live); }
+.badge[data-state='thinking']::before { background: #fbbf24; }
+.badge[data-state='speaking']::before { background: var(--accent); }
+.badge[data-state='error']::before { background: var(--danger); }
+
+/* A quiet ring while she listens, so the page feels awake. */
+.badge[data-state='listening']::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--live) 45%, transparent);
+  animation: pulse 2s ease-out infinite;
+}
+
+@keyframes pulse {
+  0% { opacity: 0.8; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.12); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .badge[data-state='listening']::after { animation: none; opacity: 0.5; }
+}
+
+.self-view {
+  position: absolute;
+  right: 1rem;
+  bottom: 1rem;
+  width: 7.5rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  background: #000;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.self-view video {
+  display: block;
+  width: 100%;
+  /* Mirrored, as people expect to see themselves. */
+  transform: scaleX(-1);
+}
+
+.credit {
+  margin: 0.6rem 0 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-align: right;
+}
+
+/* --- controls ------------------------------------------------------- */
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 1.25rem 0 0;
+}
 
 .talk {
   border: 0;
-  border-radius: 8px;
-  padding: 0.6rem 1.15rem;
+  border-radius: 10px;
+  padding: 0.7rem 1.4rem;
   font: inherit;
   font-weight: 600;
   cursor: pointer;
   background: var(--accent);
   color: #0b1020;
+  transition: filter 120ms ease;
 }
 
-.talk[data-listening='true'] { background: #f87171; color: #1a0b0b; }
+.talk:hover { filter: brightness(1.08); }
+.talk[data-active='true'] { background: var(--danger); color: #1a0b0b; }
+.talk:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 
-.talk:focus-visible {
-  outline: 2px solid var(--text);
-  outline-offset: 2px;
-}
-
-.line { margin: 1rem 0 0; }
-
-.line span {
-  display: block;
-  color: var(--muted);
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.alert {
-  margin: 1rem 0 0;
-  padding: 0.7rem 0.9rem;
-  border-radius: 8px;
-  border: 1px solid #7f2d2d;
-  background: #2a1414;
-  color: #fca5a5;
-}
-
-.stage {
-  /* Portrait proportions: the face fills the frame rather than floating in it. */
-  height: 20rem;
-  max-width: 20rem;
-  margin-inline: auto;
-  margin: 0;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: radial-gradient(ellipse at 50% 38%, #232a3a 0%, #141822 55%, #0d1016 100%);
-  overflow: hidden;
-}
-
-.stage { position: relative; }
-
-.stage-note {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  margin: 0;
-  padding: 0.5rem 0.75rem;
-  background: color-mix(in srgb, #0d1016 82%, transparent);
-  border-top: 1px solid var(--border);
-  color: var(--muted);
-  font-size: 0.78rem;
-  text-align: center;
-}
-
-.stage-note code {
-  background: #0d1016;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.05rem 0.3rem;
-}
-
-.stage-wrap { margin: 0 0 1.25rem; }
-
-.model-credit {
-  margin: 0.5rem 0 0;
-  color: var(--muted);
-  font-size: 0.72rem;
-}
-
-.mode {
+.toggle {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.45rem;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
   color: var(--muted);
   font-size: 0.85rem;
   cursor: pointer;
 }
 
-.mode input { cursor: pointer; }
-.mode:has(input:disabled) { opacity: 0.5; cursor: default; }
+.toggle:hover { border-color: var(--muted); color: var(--text); }
+.toggle:has(input:checked) { border-color: var(--accent); color: var(--text); }
+.toggle:has(input:disabled) { opacity: 0.45; cursor: default; }
+.toggle input { accent-color: var(--accent); cursor: inherit; }
 
-.hint {
-  margin: 0.6rem 0 0;
+.spacer { flex: 1; }
+
+/* --- transcript ----------------------------------------------------- */
+
+.transcript {
+  margin: 1.5rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.bubble {
+  max-width: 44rem;
+  padding: 0.75rem 1rem;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  animation: rise 180ms ease-out;
+}
+
+.bubble[data-from='you'] {
+  align-self: flex-end;
+  background: var(--surface-2);
+  border-bottom-right-radius: 4px;
+}
+
+.bubble[data-from='her'] { border-bottom-left-radius: 4px; }
+
+.bubble b {
+  display: block;
+  margin-bottom: 0.15rem;
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bubble { animation: none; }
+}
+
+.hint, .alert {
+  margin: 1rem 0 0;
+  font-size: 0.85rem;
+}
+
+.hint { color: var(--muted); }
+
+.alert {
+  padding: 0.7rem 0.9rem;
+  border-radius: 10px;
+  border: 1px solid #7f2d2d;
+  background: #2a1414;
+  color: #fca5a5;
+}
+
+@media (max-width: 40rem) {
+  .stage-frame { height: min(38vh, 16rem); }
+  .self-view { width: 5.5rem; }
 }

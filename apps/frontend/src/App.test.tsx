@@ -1,5 +1,4 @@
 import { render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { App } from './App'
@@ -22,17 +21,20 @@ describe('App', () => {
   it('starts a conversation with the character the backend reports', async () => {
     render(<App />)
     await waitFor(() => { expect(screen.getByTestId('status')).toHaveTextContent('idle') })
-    expect(screen.getByRole('button', { name: 'Start speaking' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Start conversation' })).toBeInTheDocument()
   })
 
-  it('offers live mode and explains what it does', async () => {
+  it('explains how the conversation works before it starts', async () => {
     render(<App />)
-    const toggle = await screen.findByLabelText('Live conversation')
-    expect(toggle).not.toBeChecked()
-    await userEvent.click(toggle)
-    expect(toggle).toBeChecked()
-    expect(screen.getByRole('button', { name: 'Start conversation' })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: 'Start conversation' }),
+    ).toBeInTheDocument()
     expect(screen.getByText(/talk over her to cut in/i)).toBeInTheDocument()
+  })
+
+  it('offers a camera the conversation can see through', async () => {
+    render(<App />)
+    expect(await screen.findByLabelText('Camera')).not.toBeChecked()
   })
 
   it('reports a backend that cannot be reached', async () => {
