@@ -3,6 +3,7 @@
 import asyncio
 import contextlib
 import logging
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from hmac import compare_digest
@@ -48,7 +49,7 @@ REPO_ROOT = _repo_root()
 # own records -- including provider failures -- are silently discarded
 # whichever way the server was launched.
 logging.basicConfig(
-    level=logging.INFO,
+    level=os.environ.get("PERSONAE_LOG_LEVEL", "INFO").upper(),
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 

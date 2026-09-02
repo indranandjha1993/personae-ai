@@ -70,6 +70,13 @@ class FluxStt:
             pump = asyncio.create_task(self._pump(connection, audio))
             try:
                 async for event in connection:
+                    if logger.isEnabledFor(logging.DEBUG):
+                        logger.debug(
+                            "flux %s conf=%s transcript=%r",
+                            getattr(event, "event", type(event).__name__),
+                            getattr(event, "end_of_turn_confidence", None),
+                            getattr(event, "transcript", None),
+                        )
                     # The model reports the whole turn once it is over; the
                     # interim Updates are for a caller that wants to show
                     # words as they land, which the caption already does from

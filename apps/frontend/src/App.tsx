@@ -49,6 +49,28 @@ export function App() {
  * Fast attack and slow release, so the light blooms on the first syllable and
  * decays like a breath. Never React state: this changes sixty times a second.
  */
+function InputMeter({ level }: { level: () => number }): React.ReactElement {
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    let frame = 0
+    const tick = (): void => {
+      const bar = ref.current
+      if (bar) {
+        // Speech sits low in the 0..1 range, so the scale is generous.
+        const shown = Math.min(1, level() * 6)
+        bar.style.setProperty('--level', shown.toFixed(3))
+        bar.dataset['hearing'] = shown > 0.06 ? 'yes' : 'no'
+      }
+      frame = requestAnimationFrame(tick)
+    }
+    frame = requestAnimationFrame(tick)
+    return () => { cancelAnimationFrame(frame) }
+  }, [level])
+
+  return <div className="input-meter" ref={ref} title="Microphone level" aria-hidden="true" />
+}
+
 function useVoiceLight(
   ref: React.RefObject<HTMLDivElement | null>,
   features: () => AudioFeatures,
@@ -70,7 +92,8 @@ function useVoiceLight(
 function Conversation({ characterId, name }: { characterId: string; name: string }) {
   const {
     status, transcript, reply, gesture, emotion, detail,
-    features, spokenSoFar, turnFinished, turnId, cameraStream, cameraOn, toggleCamera, start, stop,
+    features, spokenSoFar, turnFinished, turnId, inputLevel,
+    cameraStream, cameraOn, toggleCamera, start, stop,
   } = useConversation(characterId)
   const active = status !== 'idle' && status !== 'error'
   const stage = useRef<HTMLDivElement>(null)
@@ -97,6 +120,7 @@ function Conversation({ characterId, name }: { characterId: string; name: string
         <span className="status" data-state={status} role="status" aria-live="polite">
           <span data-testid="status">{status}</span>
         </span>
+        {active && <InputMeter level={inputLevel} />}
       </div>
       <div className="hearth" data-state={status} aria-hidden="true" />
 

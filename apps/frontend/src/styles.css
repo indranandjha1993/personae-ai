@@ -377,3 +377,30 @@ body {
   .self-view { width: 5.5rem; }
   .app { padding: 1.75rem 1rem 3rem; }
 }
+
+/* Microphone level. Proof that she is hearing you: silence here while you
+   speak means the input never reached her, not that she is ignoring you. */
+.input-meter {
+  position: absolute;
+  left: 1.6rem;
+  bottom: 3.4rem;
+  width: 4.5rem;
+  height: 2px;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--faint) 25%, transparent);
+  overflow: hidden;
+}
+
+.input-meter::after {
+  content: '';
+  display: block;
+  height: 100%;
+  width: calc(var(--level, 0) * 100%);
+  border-radius: inherit;
+  background: var(--secondary);
+  transition: width 90ms linear;
+}
+
+.input-meter[data-hearing='no']::after {
+  background: color-mix(in oklab, var(--faint) 60%, transparent);
+}

@@ -31,6 +31,8 @@ export interface Conversation {
   turnFinished: boolean
   /** Increments per reply, so the caption animates once rather than per sentence. */
   turnId: number
+  /** How loud the microphone is hearing the listener, 0..1. */
+  inputLevel: () => number
   /** The camera stream, for a self-view, or null when the camera is off. */
   cameraStream: MediaStream | null
   cameraOn: boolean
@@ -59,6 +61,7 @@ export function useConversation(characterId: string): Conversation {
   const [turnFinished, setTurnFinished] = useState(false)
   const [playbackDone, setPlaybackDone] = useState(false)
   const [turnId, setTurnId] = useState(0)
+  const inputLevelRef = useRef(0)
   const queued = useRef<{ text: string; playedBy: number | null }[]>([])
   const suppressing = useRef(false)
 
@@ -236,6 +239,7 @@ export function useConversation(characterId: string): Conversation {
 
     startCapture((frame) => {
       session.sendAudio(frame)
+      inputLevelRef.current = frameLevel(frame)
       // One still per utterance. Ungated this ran on every audio frame, which
       // is ten JPEG uploads a second and continuous vision-token spend.
       if (cameraRef.current && !pendingFrame.current && !frameSentRef.current) {
@@ -306,6 +310,7 @@ export function useConversation(characterId: string): Conversation {
   // A function rather than a value: loudness changes every frame, and putting
   // it in state would re-render the whole tree 60 times a second.
   const loudness = useCallback(() => playerRef.current?.currentLoudness() ?? 0, [])
+  const inputLevel = useCallback(() => inputLevelRef.current, [])
 
   // "Thinking" is never a resting state: if nothing comes back, say so rather
   // than leaving the user watching a label forever.
@@ -364,6 +369,7 @@ export function useConversation(characterId: string): Conversation {
     spokenSoFar,
     turnFinished: turnFinished && playbackDone,
     turnId,
+    inputLevel,
     cameraStream,
     cameraOn: cameraStream !== null,
     toggleCamera,

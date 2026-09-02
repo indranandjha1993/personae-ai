@@ -25,7 +25,10 @@ export async function startCapture(onFrame: (frame: Int16Array) => void): Promis
     audio: {
       channelCount: 1,
       echoCancellation: true,
-      noiseSuppression: true,
+      noiseSuppression: false,
+      // Lifts a quiet or distant speaker rather than leaving the recogniser
+      // to work from what little reaches the microphone.
+      autoGainControl: true,
     },
   })
 
