@@ -41,6 +41,7 @@ class SlowLlm:
         self.delay = delay
         self.seen_history: list[Sequence[Message]] = []
         self.seen_images: list[bytes | None] = []
+        self.seen_prompts: list[str] = []
 
     def respond(
         self,
@@ -51,6 +52,7 @@ class SlowLlm:
     ) -> AsyncIterator[str]:
         self.seen_history.append(list(history))
         self.seen_images.append(image)
+        self.seen_prompts.append(system_prompt)
 
         async def run() -> AsyncIterator[str]:
             for fragment in self.fragments:
@@ -165,3 +167,23 @@ async def test_audio_backlog_is_bounded() -> None:
     for _ in range(500):
         await session.offer(b"\x10\x20" * 800)
     assert session.backlog() <= MAX_PENDING_AUDIO
+
+
+async def test_she_is_told_when_she_can_see() -> None:
+    """Without this she denies having a camera even while one is attached."""
+    llm = SlowLlm(["ok"], 0.0)
+    session = LiveSession(_character(), ScriptedStt(["what is this"]), llm, SilentTts())
+    session.see(b"\xff\xd8jpeg")
+    await session.offer(b"\x10\x20" * 40)
+    await session.close_input()
+    await _drain(session)
+    assert "camera is on" in llm.seen_prompts[0].lower()
+
+
+async def test_she_is_not_told_she_can_see_when_no_frame_arrived() -> None:
+    llm = SlowLlm(["ok"], 0.0)
+    session = LiveSession(_character(), ScriptedStt(["hello"]), llm, SilentTts())
+    await session.offer(b"\x10\x20" * 40)
+    await session.close_input()
+    await _drain(session)
+    assert "camera is on" not in llm.seen_prompts[0].lower()

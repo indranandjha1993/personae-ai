@@ -10,12 +10,24 @@ from personae.conversation import History, Turn
 from personae.packs.models import Character
 from personae.protocol import ServerMessage
 from personae.providers.base import LlmProvider, SttProvider, TtsProvider
+from personae.speech import for_speech
 
 logger = logging.getLogger(__name__)
 
 # Roughly thirty seconds of 16kHz audio. Beyond this the client is producing
 # faster than transcription consumes, and the oldest frames are already stale.
 MAX_PENDING_AUDIO = 300
+
+
+def _prompt_for(persona: str, seeing: bool) -> str:
+    """Tell her what she can do right now.
+
+    She has no other way to know whether a camera is attached, and without
+    being told she denies having one even while a frame is in front of her.
+    """
+    if not seeing:
+        return persona
+    return f"{persona}\n\nThe camera is on: you can see the person you are talking to."
 
 
 class LiveSession:
@@ -96,7 +108,7 @@ class LiveSession:
             nonlocal spoken
             try:
                 async for fragment in self._llm.respond(
-                    self._character.persona.prompt,
+                    _prompt_for(self._character.persona.prompt, frame is not None),
                     transcript,
                     self._history.messages(),
                     frame,
@@ -108,7 +120,10 @@ class LiveSession:
                 await outbound.put(ServerMessage.expression(gesture=gesture, emotion=emotion))
 
                 voice = self._character.voice
-                async for chunk in self._tts.synthesize(spoken, voice.provider_voice, voice.rate):
+                # Only the spoken copy is stripped; the caption keeps its text.
+                async for chunk in self._tts.synthesize(
+                    for_speech(spoken), voice.provider_voice, voice.rate
+                ):
                     await outbound.put(ServerMessage.audio(chunk))
             except asyncio.CancelledError:
                 raise
