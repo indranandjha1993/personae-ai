@@ -1,14 +1,13 @@
 """A character's speaking rate must reach the synthesiser."""
 
-import base64
 from collections.abc import AsyncIterator, Sequence
 
 import pytest
 
 from personae.conversation import Message
+from personae.live import LiveSession
 from personae.packs.loader import load_packs
-from personae.protocol import AudioFrame, ServerMessage
-from personae.session import Session
+from personae.protocol import ServerMessage
 
 
 class RecordingTts:
@@ -61,8 +60,8 @@ async def test_each_character_speaks_at_its_own_rate(characters: object) -> None
     """Characters declare distinct rates; a shared default flattens them."""
     tts = RecordingTts()
     character = characters.get("bundled/seed")  # type: ignore[attr-defined]
-    session = Session(character, StubStt(), StubLlm(), tts)
-    await session.offer(AudioFrame(type="audio", pcm=base64.b64encode(b"\x10\x20" * 40).decode()))
+    session = LiveSession(character, StubStt(), StubLlm(), tts)
+    await session.offer(b"\x10\x20" * 40)
     await session.close_input()
     async for _ in session.run():
         pass
