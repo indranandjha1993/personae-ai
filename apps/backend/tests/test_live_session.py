@@ -4,7 +4,7 @@ import asyncio
 from collections.abc import AsyncIterator, Sequence
 
 from personae.conversation import Message
-from personae.live import LiveSession
+from personae.live import MAX_PENDING_AUDIO, LiveSession
 from personae.packs.loader import load_packs
 from personae.packs.models import Character
 from personae.protocol import ServerMessage
@@ -40,6 +40,7 @@ class SlowLlm:
         self.fragments = fragments
         self.delay = delay
         self.seen_history: list[Sequence[Message]] = []
+        self.seen_images: list[bytes | None] = []
 
     def respond(
         self,
@@ -49,6 +50,7 @@ class SlowLlm:
         image: bytes | None = None,
     ) -> AsyncIterator[str]:
         self.seen_history.append(list(history))
+        self.seen_images.append(image)
 
         async def run() -> AsyncIterator[str]:
             for fragment in self.fragments:
@@ -129,3 +131,37 @@ async def test_an_interrupted_reply_is_remembered_as_spoken() -> None:
     remembered = "".join(m["content"] for m in llm.seen_history[1])
     assert "the first part" in remembered
     assert "the second part" not in remembered
+
+
+async def test_a_camera_frame_reaches_the_model() -> None:
+    llm = SlowLlm(["looking"], 0.0)
+    session = LiveSession(_character(), ScriptedStt(["what is this"]), llm, SilentTts())
+    session.see(b"\xff\xd8jpeg")
+    await session.offer(b"\x10\x20" * 40)
+    await session.close_input()
+    await _drain(session)
+    assert llm.seen_images == [b"\xff\xd8jpeg"]
+
+
+async def test_a_frame_is_used_once_and_not_repeated() -> None:
+    """A still from a minute ago no longer shows what the camera sees."""
+    llm = SlowLlm(["ok"], 0.0)
+    session = LiveSession(_character(), ScriptedStt(["a", "b"]), llm, SilentTts())
+    session.see(b"\xff\xd8jpeg")
+    await session.offer(b"\x10\x20" * 40)
+    await session.offer(b"\x30\x40" * 40)
+    await session.close_input()
+    await _drain(session)
+    assert llm.seen_images == [b"\xff\xd8jpeg", None]
+
+
+async def test_audio_backlog_is_bounded() -> None:
+    """A client that outruns transcription must not grow memory without limit.
+
+    Dropping stale microphone audio is acceptable; blocking the reader that
+    also carries interrupts is not.
+    """
+    session = LiveSession(_character(), ScriptedStt([]), SlowLlm([], 0.0), SilentTts())
+    for _ in range(500):
+        await session.offer(b"\x10\x20" * 800)
+    assert session.backlog() <= MAX_PENDING_AUDIO
