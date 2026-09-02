@@ -3,12 +3,16 @@
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # How a language endpoint expects requests to be shaped. Vision in particular
 # differs: OpenAI takes image_url parts, Anthropic takes base64 image blocks.
 LlmWire = Literal["openai", "anthropic"]
+
+
+# Languages nova-3 does not cover; nova-2 does.
+_NOVA_2_ONLY = frozenset({"es", "fr", "pt", "hi", "ru", "zh", "ko", "uk", "sv", "tr", "id"})
 
 
 def env_file_path() -> Path:
@@ -47,6 +51,10 @@ class Settings(BaseSettings):
     # Speech model and voice. A character pack may name its own voice, in which
     # case this is only the fallback.
     stt_model: str = "nova-3"
+    # Deepgram transcribes well over a hundred languages, but not every one on
+    # every model: Spanish and French need nova-2, where German and Japanese
+    # work on nova-3.
+    stt_language: str = "en"
     tts_voice: str = "aura-2-thalia-en"
 
     # Silence, in milliseconds, before a turn is treated as finished. Short
@@ -68,3 +76,12 @@ class Settings(BaseSettings):
     access_token: str | None = None
 
     pack_search_paths: tuple[str, ...] = ("packs/bundled", "packs/local")
+
+    @model_validator(mode="after")
+    def _language_matches_the_model(self) -> "Settings":
+        """Catch a pairing the socket would refuse with an opaque 400."""
+        if self.stt_model.startswith("nova-3") and self.stt_language in _NOVA_2_ONLY:
+            raise ValueError(
+                f"PERSONAE_STT_LANGUAGE={self.stt_language} needs PERSONAE_STT_MODEL=nova-2"
+            )
+        return self

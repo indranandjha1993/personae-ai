@@ -119,6 +119,12 @@ back to a stand-in when it is not, so you can run real speech against a stand-in
 the reverse, without setting anything else. A key with no endpoint fails at startup naming
 what is missing, rather than quietly falling back.
 
+She can speak a language other than English: Deepgram transcribes over a
+hundred and forty and synthesises seven, so set `PERSONAE_STT_LANGUAGE` and a
+matching voice. Not every language runs on every model -- Spanish and French
+need `nova-2` where German and Japanese work on `nova-3` -- and a pairing that
+would fail is refused at startup rather than at the socket. See `.env.example`.
+
 The speech model, fallback voice, and turn-taking timings are configurable too — see
 `.env.example`. `PERSONAE_ENDPOINTING_MS` is the one worth tuning: it sets how long she
 waits through a pause before deciding you have finished speaking. A character pack that

@@ -28,11 +28,13 @@ class DeepgramStt:
         self,
         api_key: str,
         model: str = "nova-3",
+        language: str = "en",
         endpointing_ms: int = 800,
         utterance_end_ms: int = 1000,
     ) -> None:
         self._client = AsyncDeepgramClient(api_key=api_key)
         self.model = model
+        self.language = language
         self._endpointing_ms = endpointing_ms
         self._utterance_end_ms = utterance_end_ms
 
@@ -42,6 +44,7 @@ class DeepgramStt:
             encoding="linear16",
             sample_rate=STT_SAMPLE_RATE,
             channels=1,
+            language=self.language,
             punctuate=True,
             # Deepgram decides when a turn has ended, so a live conversation
             # needs no push-to-talk. Interim results arrive first and are

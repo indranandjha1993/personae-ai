@@ -22,6 +22,7 @@ def build_stt(settings: Settings) -> SttProvider:
     return DeepgramStt(
         api_key=_require(settings.deepgram_api_key, "DEEPGRAM_API_KEY"),
         model=settings.stt_model,
+        language=settings.stt_language,
         endpointing_ms=settings.endpointing_ms,
         utterance_end_ms=settings.utterance_end_ms,
     )
