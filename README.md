@@ -35,10 +35,10 @@ gitignored. See [docs/character-packs.md](docs/character-packs.md).
 
 ## Runs without API keys
 
-Speech-to-text, the language model, and text-to-speech sit behind narrow interfaces with
-**mock implementations as the default**. Clone the repo, install, and it runs — the full
-test suite passes with no credentials and no network. Supplying real keys swaps the
-providers; no other code changes.
+Speech-to-text, the language model, and text-to-speech sit behind narrow interfaces, and
+each falls back to a **stand-in when its credential is absent**. Clone the repo, install,
+and it runs — the full test suite passes with no credentials and no network. Adding a key
+is the only step needed to make that stage real.
 
 This is a deliberate constraint: an open-source project that can only be run by someone
 holding paid credentials cannot really be contributed to.
@@ -87,7 +87,7 @@ No API keys required.
 ```bash
 git clone https://github.com/indranandjha1993/personae-ai.git
 cd personae-ai
-cp .env.example .env      # optional — defaults run on mock providers
+cp .env.example .env      # optional — it runs without any keys
 
 # Backend
 cd apps/backend && uv sync && uv run uvicorn personae.main:app --reload --ws websockets-sansio
@@ -105,22 +105,19 @@ uv run uvicorn personae.main:app --port 8100 --ws websockets-sansio   # backend
 PERSONAE_BACKEND=http://127.0.0.1:8100 npm run dev                    # frontend
 ```
 
-To use real services, copy `.env.example` to `.env`, add your keys, and switch the relevant
-mode from `mock` to `live`:
+To use real services, copy `.env.example` to `.env` and add your keys:
 
 ```bash
-PERSONAE_STT_MODE=live
-PERSONAE_TTS_MODE=live
-PERSONAE_DEEPGRAM_API_KEY=your-key
+PERSONAE_DEEPGRAM_API_KEY=your-key          # transcription and speech
 
-PERSONAE_LLM_MODE=live
+PERSONAE_LLM_API_KEY=your-key               # the language model
 PERSONAE_LLM_BASE_URL=https://api.openai.com/v1
-PERSONAE_LLM_API_KEY=your-key
 ```
 
-Modes are independent, so you can run live speech against a mock language model, or the
-reverse. A missing credential fails at startup naming the variable, rather than surfacing on
-someone's first utterance.
+A key is all that is needed — each stage goes live when its credential is present and falls
+back to a stand-in when it is not, so you can run real speech against a stand-in model, or
+the reverse, without setting anything else. A key with no endpoint fails at startup naming
+what is missing, rather than quietly falling back.
 
 The speech model, fallback voice, and turn-taking timings are configurable too — see
 `.env.example`. `PERSONAE_ENDPOINTING_MS` is the one worth tuning: it sets how long she
@@ -193,6 +190,8 @@ for every push and pull request.
 - [x] Deepgram STT/TTS and LLM providers
 - [x] Gesture and emotion inference (vocabulary-constrained)
 - [x] Avatar rendering and lip-sync
+- [x] Live conversation with barge-in
+- [x] Camera input for questions about what you are holding
 
 ## Contributing
 
