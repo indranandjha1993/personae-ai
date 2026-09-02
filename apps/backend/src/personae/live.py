@@ -148,6 +148,31 @@ class LiveSession:
 
                 await say(sentences.flush())
 
+                if not spoken.strip() and frame is not None:
+                    # Some endpoints accept an image and then stream no text at
+                    # all. Losing her sight is better than losing her voice, so
+                    # the turn is asked again without the picture.
+                    logger.warning("empty reply for a turn with a camera frame; retrying blind")
+                    sentences = SentenceBuffer()
+                    async for fragment in self._llm.respond(
+                        _prompt_for(self._character.persona.prompt, False),
+                        transcript,
+                        self._history.messages(),
+                        None,
+                    ):
+                        spoken += fragment
+                        for sentence in sentences.feed(fragment):
+                            await say(sentence)
+                    await say(sentences.flush())
+
+                if not spoken.strip():
+                    # The model accepted the turn and returned nothing. Saying
+                    # so beats a silent success the listener can only read as
+                    # the app having died.
+                    logger.warning("the model returned an empty reply")
+                    await outbound.put(ServerMessage.error("she had nothing to say -- try again"))
+                    return
+
                 ending = farewell_marked(spoken)
                 spoken = strip_farewell(spoken)
                 # The caption follows the speech rather than preceding it.

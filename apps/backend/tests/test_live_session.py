@@ -284,3 +284,76 @@ async def test_the_farewell_marker_is_never_announced() -> None:
         m.model_dump()["text"] async for m in session.run() if m.model_dump()["type"] == "speaking"
     ]
     assert all("[end]" not in text for text in spoken)
+
+
+class BlindSpotLlm:
+    """Streams nothing when given a picture, and text when not.
+
+    Some endpoints accept an image, report output tokens, and then stream no
+    content at all; she must not be struck dumb by that.
+    """
+
+    def __init__(self) -> None:
+        self.calls: list[bytes | None] = []
+
+    def respond(
+        self,
+        system_prompt: str,
+        transcript: str,
+        history: Sequence[Message] = (),
+        image: bytes | None = None,
+    ) -> AsyncIterator[str]:
+        self.calls.append(image)
+        fragments = [] if image is not None else ["I can hear ", "you fine."]
+
+        async def run() -> AsyncIterator[str]:
+            for fragment in fragments:
+                yield fragment
+
+        return run()
+
+
+async def test_she_still_answers_when_vision_returns_nothing() -> None:
+    """Losing her sight for a turn beats losing her voice."""
+    llm = BlindSpotLlm()
+    session = LiveSession(_character(), ScriptedStt(["hello"]), llm, SilentTts())
+    session.see(b"\xff\xd8jpeg")
+    await session.offer(b"\x10\x20" * 40)
+    await session.close_input()
+
+    messages = await _drain(session)
+    kinds = [m.model_dump()["type"] for m in messages]
+    replies = [m.model_dump()["text"] for m in messages if m.model_dump()["type"] == "reply"]
+
+    assert llm.calls == [b"\xff\xd8jpeg", None], "the turn is retried without the picture"
+    assert "audio" in kinds, "she speaks on the retry"
+    assert replies == ["I can hear you fine."]
+
+
+class MuteLlm:
+    """Never streams anything, picture or not."""
+
+    def respond(
+        self,
+        system_prompt: str,
+        transcript: str,
+        history: Sequence[Message] = (),
+        image: bytes | None = None,
+    ) -> AsyncIterator[str]:
+        async def run() -> AsyncIterator[str]:
+            nothing: tuple[str, ...] = ()
+            for fragment in nothing:
+                yield fragment
+
+        return run()
+
+
+async def test_a_reply_with_no_words_is_reported() -> None:
+    """A silent success reads as the app having died; say so instead."""
+    session = LiveSession(_character(), ScriptedStt(["hello"]), MuteLlm(), SilentTts())
+    await session.offer(b"\x10\x20" * 40)
+    await session.close_input()
+
+    messages = [m.model_dump() for m in await _drain(session)]
+    assert any(m["type"] == "error" for m in messages)
+    assert not any(m["type"] == "reply" for m in messages)

@@ -32,8 +32,35 @@ vi.mock('./audio/capture', () => ({
 class FakeAudioContext {
   currentTime = 0
   sampleRate = 24_000
+  destination = {}
   close = vi.fn(() => Promise.resolve())
   resume = vi.fn(() => Promise.resolve())
+  createBuffer(_channels: number, length: number) {
+    return { getChannelData: () => new Float32Array(length) }
+  }
+  createBufferSource() {
+    return {
+      buffer: null,
+      connect: vi.fn(),
+      start: vi.fn(),
+      stop: vi.fn(),
+      disconnect: vi.fn(),
+      onended: null,
+    }
+  }
+  createAnalyser() {
+    return {
+      fftSize: 0,
+      frequencyBinCount: 32,
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      getByteFrequencyData: vi.fn(),
+      getByteTimeDomainData: vi.fn(),
+    }
+  }
+  createGain() {
+    return { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() }
+  }
 }
 vi.stubGlobal('AudioContext', FakeAudioContext)
 
@@ -75,3 +102,4 @@ describe('ending a turn', () => {
     expect(result.current.status).toBe('error')
   })
 })
+
