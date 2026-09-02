@@ -96,8 +96,10 @@ async def test_barge_in_stops_the_reply_in_flight() -> None:
         await session.interrupt()
         await session.close_input()
 
-    asyncio.create_task(interrupt())
+    # Referenced so it cannot be collected mid-flight.
+    task = asyncio.create_task(interrupt())
     messages = await _drain(session)
+    await task
     kinds = [m.model_dump()["type"] for m in messages]
     assert "interrupted" in kinds, kinds
 
@@ -115,8 +117,9 @@ async def test_an_interrupted_reply_is_remembered_as_spoken() -> None:
         await asyncio.sleep(0.2)
         await session.close_input()
 
-    asyncio.create_task(interrupt_then_speak())
+    task = asyncio.create_task(interrupt_then_speak())
     await _drain(session)
+    await task
 
     assert len(llm.seen_history) >= 2, "the second turn never ran"
     remembered = "".join(m["content"] for m in llm.seen_history[1])
