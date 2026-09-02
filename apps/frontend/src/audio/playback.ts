@@ -16,11 +16,49 @@
 /** How far ahead of `currentTime` to start, absorbing network jitter. */
 const LEAD_SECONDS = 0.08
 
+/** A per-frame read of what the voice is doing right now. */
+export interface AudioFeatures {
+  /** Loudness, 0 to 1. */
+  rms: number
+  /** 0 for back rounded vowels (oo, oh), 1 for front spread ones (ee, ih). */
+  frontness: number
+  /** How open the jaw reads from the first formant, 0 to 1. */
+  openness: number
+  /** Proportion of energy in the hiss bands, which marks s and sh. */
+  sibilance: number
+  /** Voicing gate, 0 to 1. */
+  voiced: number
+}
+
+export const SILENT_FEATURES: AudioFeatures = Object.freeze({
+  rms: 0,
+  frontness: 0.5,
+  openness: 0,
+  sibilance: 0,
+  voiced: 0,
+})
+
+/**
+ * Frequency bands in hertz: voicing, the two first-formant ranges that separate
+ * close from open vowels, the two second-formant ranges that separate back from
+ * front, and the hiss band.
+ */
+const BAND_HZ: readonly (readonly [number, number])[] = [
+  [85, 255],
+  [250, 450],
+  [550, 950],
+  [700, 1300],
+  [1650, 2600],
+  [4200, 8000],
+]
+
 export class PcmPlayer {
   private nextStartTime = 0
   private readonly sources = new Set<AudioBufferSourceNode>()
   private readonly analyser: AnalyserNode | null
   private readonly frame: Float32Array<ArrayBuffer>
+  private readonly spectrum: Uint8Array<ArrayBuffer>
+  private readonly bands: [number, number][]
 
   constructor(
     private readonly context: AudioContext,
@@ -35,6 +73,21 @@ export class PcmPlayer {
       this.analyser.connect(context.destination)
     }
     this.frame = new Float32Array(new ArrayBuffer((this.analyser?.fftSize ?? 0) * 4))
+
+    if (this.analyser) {
+      // The default smears consonant transitions; the mapper does its own
+      // asymmetric smoothing downstream.
+      this.analyser.smoothingTimeConstant = 0.5
+    }
+    const binCount = this.analyser?.frequencyBinCount ?? 0
+    this.spectrum = new Uint8Array(new ArrayBuffer(binCount))
+    // Derived from the context, not the source: the graph runs at the device
+    // rate and resamples the 24kHz buffers into it.
+    const hzPerBin = context.sampleRate / (this.analyser?.fftSize ?? 1024)
+    this.bands = BAND_HZ.map(([low, high]) => [
+      Math.max(1, Math.round(low / hzPerBin)),
+      Math.min(Math.max(binCount - 1, 1), Math.round(high / hzPerBin)),
+    ])
   }
 
   /** Root-mean-square loudness of what is playing right now, 0 when silent. */
@@ -47,6 +100,32 @@ export class PcmPlayer {
       sum += sample * sample
     }
     return Math.sqrt(sum / this.frame.length)
+  }
+
+  /** Read the current spectral shape into `out`, avoiding a per-frame allocation. */
+  readFeatures(out: AudioFeatures): AudioFeatures {
+    if (!this.analyser) return Object.assign(out, SILENT_FEATURES)
+    out.rms = this.currentLoudness()
+    this.analyser.getByteFrequencyData(this.spectrum)
+
+    const energy = this.bands.map(([low, high]) => {
+      let sum = 0
+      for (let i = low; i <= high; i += 1) {
+        const value = (this.spectrum[i] ?? 0) / 255
+        sum += value * value
+      }
+      return sum / Math.max(1, high - low + 1)
+    })
+
+    const epsilon = 1e-4
+    const [, f1low = 0, f1high = 0, f2low = 0, f2high = 0, hiss = 0] = energy
+    const total = energy.reduce((a, b) => a + b, 0) + epsilon
+
+    out.frontness = f2high / (f2high + f2low + epsilon)
+    out.openness = f1high / (f1low + f1high + epsilon)
+    out.sibilance = hiss / total
+    out.voiced = Math.min(1, Math.max(0, (out.rms - 0.008) / 0.042))
+    return out
   }
 
   /** Schedule one chunk of 16-bit PCM immediately after whatever precedes it. */
