@@ -333,14 +333,6 @@ body {
   color: var(--faint);
 }
 
-.colophon {
-  margin: 4rem 0 0;
-  text-align: center;
-  font-size: 0.68rem;
-  color: var(--faint);
-  opacity: 0.7;
-}
-
 .hint {
   margin: 1.1rem auto 0;
   max-width: 34rem;

@@ -20,6 +20,9 @@ export type Status = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error'
 /** Give up waiting for a goodbye to finish after this. */
 const FAREWELL_MAX_WAIT_MS = 15_000
 
+/** How long she may think before we assume the reply is not coming. */
+const THINKING_TIMEOUT_MS = 30_000
+
 export interface Conversation {
   status: Status
   /** What she has said so far this turn, growing sentence by sentence. */
@@ -145,6 +148,13 @@ export function useConversation(characterId: string): Conversation {
             // so anything the splitter dropped is still shown.
             setReply(message.text)
             setTurnFinished(true)
+            // A reply with no audio behind it -- muted voice, a TTS failure,
+            // an empty synthesis -- still ends the turn. Without this the UI
+            // waits on a sound that is never coming.
+            if (queued.current.length === 0 && !spokenRef.current) {
+              setPlaybackDone(true)
+              setStatus('listening')
+            }
             break
           case 'expression':
             setGesture(message.gesture)
@@ -296,6 +306,18 @@ export function useConversation(characterId: string): Conversation {
   // A function rather than a value: loudness changes every frame, and putting
   // it in state would re-render the whole tree 60 times a second.
   const loudness = useCallback(() => playerRef.current?.currentLoudness() ?? 0, [])
+
+  // "Thinking" is never a resting state: if nothing comes back, say so rather
+  // than leaving the user watching a label forever.
+  useEffect(() => {
+    if (status !== 'thinking') return
+    const giveUp = window.setTimeout(() => {
+      setDetail('She did not answer.')
+      teardown()
+      setStatus('error')
+    }, THINKING_TIMEOUT_MS)
+    return () => { window.clearTimeout(giveUp) }
+  }, [status, teardown])
 
   // Caption and teardown both run on the player's clock rather than on message
   // arrival: audio is delivered far faster than it is heard, so anything keyed

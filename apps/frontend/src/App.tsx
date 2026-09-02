@@ -39,11 +39,6 @@ export function App() {
       </header>
       {loadError !== '' && <p className="alert" role="alert">{loadError}</p>}
       {character && <Conversation characterId={character.id} name={character.display_name} />}
-      {/* The avatar's licence requires attribution; it belongs at the foot of
-          the page rather than under her face. */}
-      <footer className="colophon">
-        Avatar: Seed-san by VirtualCast, Inc., under the VRM Public License 1.0
-      </footer>
     </div>
   )
 }

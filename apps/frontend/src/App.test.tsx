@@ -53,9 +53,10 @@ describe('App', () => {
     expect(screen.getByText(/Wren's here/)).toBeInTheDocument()
   })
 
-  it('credits the avatar, which its licence requires', async () => {
+  it('keeps the model out of the scene, so only she is on screen', async () => {
     render(<App />)
-    expect(await screen.findByText(/VRM Public License/)).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Wren' })).toBeInTheDocument()
+    expect(screen.queryByText(/VRM Public License|Seed-san/)).not.toBeInTheDocument()
   })
 
   it('reports a backend that cannot be reached', async () => {
