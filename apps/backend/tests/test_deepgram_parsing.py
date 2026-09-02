@@ -43,17 +43,61 @@ def test_ignores_a_non_string_transcript() -> None:
 
 
 @dataclass
-class Interim:
+class Result:
     channel: object
     is_final: bool = False
     speech_final: bool = False
 
 
-def test_only_finalised_events_count_as_transcripts() -> None:
-    """Interim guesses change as you speak; answering one would be premature."""
-    from personae.providers.deepgram import _is_final
+def _words(text: str) -> Result:
+    return Result(channel=Channel(alternatives=[Alternative(transcript=text)]))
 
-    channel = Channel(alternatives=[Alternative(transcript="hello")])
-    assert not _is_final(Interim(channel=channel))
-    assert _is_final(Interim(channel=channel, is_final=True))
-    assert _is_final(Interim(channel=channel, speech_final=True))
+
+def test_fragments_are_joined_into_one_utterance() -> None:
+    """Deepgram finalises several fragments per sentence.
+
+    Answering each one spawns overlapping replies that talk over each other and
+    over the person still speaking.
+    """
+    from personae.providers.deepgram import UtteranceBuffer
+
+    buffer = UtteranceBuffer()
+    first = _words("what I wanted to ask")
+    first.is_final = True
+    assert buffer.take(first) is None
+
+    second = _words("is whether this works")
+    second.is_final = True
+    second.speech_final = True
+    assert buffer.take(second) == "what I wanted to ask is whether this works"
+
+
+def test_the_buffer_empties_after_an_utterance() -> None:
+    from personae.providers.deepgram import UtteranceBuffer
+
+    buffer = UtteranceBuffer()
+    done = _words("hello")
+    done.is_final = True
+    done.speech_final = True
+    assert buffer.take(done) == "hello"
+
+    again = _words("again")
+    again.is_final = True
+    again.speech_final = True
+    assert buffer.take(again) == "again"
+
+
+def test_interim_results_are_ignored() -> None:
+    from personae.providers.deepgram import UtteranceBuffer
+
+    assert UtteranceBuffer().take(_words("guess")) is None
+
+
+def test_a_silent_utterance_yields_nothing() -> None:
+    from personae.providers.deepgram import UtteranceBuffer
+
+    buffer = UtteranceBuffer()
+    empty = _words("")
+    empty.is_final = True
+    empty.speech_final = True
+    assert buffer.take(empty) is None

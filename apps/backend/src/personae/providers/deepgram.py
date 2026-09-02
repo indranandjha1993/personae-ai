@@ -52,13 +52,19 @@ class DeepgramStt:
             vad_events=True,
         ) as connection:
             pump = asyncio.create_task(self._pump(connection, audio))
+            buffer = UtteranceBuffer()
             try:
                 async for event in connection:
-                    if not _is_final(event):
+                    # Deepgram signals the end of speech separately from the
+                    # end of a transcription fragment.
+                    if type(event).__name__.endswith("UtteranceEnd"):
+                        pending = buffer.flush()
+                        if pending:
+                            yield pending
                         continue
-                    text = _transcript_of(event)
-                    if text:
-                        yield text
+                    utterance = buffer.take(event)
+                    if utterance:
+                        yield utterance
             finally:
                 # The socket is closing either way; make sure the feeding task
                 # does not outlive it and write to a dead connection.
@@ -101,9 +107,39 @@ class DeepgramTts:
                     yield message
 
 
-def _is_final(event: object) -> bool:
-    """True for a finalised transcript, false for an interim guess."""
-    return bool(getattr(event, "is_final", False) or getattr(event, "speech_final", False))
+class UtteranceBuffer:
+    """Joins Deepgram's finalised fragments into whole utterances.
+
+    Deepgram finalises several fragments within one sentence and marks the end
+    of the sentence with ``speech_final``. Treating each fragment as a finished
+    turn spawns overlapping replies that talk over each other, and over someone
+    who is still speaking.
+    """
+
+    def __init__(self) -> None:
+        self._parts: list[str] = []
+
+    def take(self, event: object) -> str | None:
+        """Return a complete utterance, or None if more is still coming."""
+        if not getattr(event, "is_final", False):
+            return None
+
+        text = _transcript_of(event)
+        if text:
+            self._parts.append(text)
+
+        if not getattr(event, "speech_final", False):
+            return None
+
+        utterance = " ".join(self._parts).strip()
+        self._parts.clear()
+        return utterance or None
+
+    def flush(self) -> str | None:
+        """Return whatever has accumulated, for an utterance-end event."""
+        utterance = " ".join(self._parts).strip()
+        self._parts.clear()
+        return utterance or None
 
 
 def _transcript_of(event: object) -> str:
