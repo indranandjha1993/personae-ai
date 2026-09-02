@@ -2,8 +2,10 @@
 
 import asyncio
 import contextlib
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from hmac import compare_digest
 from pathlib import Path
 from typing import TypedDict
 
@@ -16,11 +18,13 @@ from personae.protocol import (
     PLAYBACK_SAMPLE_RATE,
     AudioFrame,
     InterruptSignal,
+    MalformedMessageError,
     ServerMessage,
+    VisionFrame,
+    decode,
 )
 from personae.providers.base import LlmProvider, SttProvider, TtsProvider
 from personae.providers.factory import build_llm, build_stt, build_tts
-from personae.session import MalformedMessageError, Session, decode
 from personae.settings import Settings
 
 
@@ -39,6 +43,8 @@ def _repo_root() -> Path:
 
 
 REPO_ROOT = _repo_root()
+
+logger = logging.getLogger(__name__)
 
 
 class AppState(TypedDict):
@@ -115,29 +121,16 @@ def create_app() -> FastAPI:
             ]
         }
 
-    @app.websocket("/ws/session/{pack}/{character}")
-    async def session(socket: WebSocket, pack: str, character: str) -> None:
-        registry: CharacterRegistry = socket.state.characters
-        try:
-            persona = registry.get(f"{pack}/{character}")
-        except KeyError:
-            # Refuse before accepting, so the client sees a failed handshake
-            # rather than an open socket that immediately dies.
-            await socket.close(code=4004, reason="unknown character")
-            return
-
-        await socket.accept()
-        # Announced rather than assumed: the client cannot guess the synthesis
-        # rate, and playing at the wrong one shifts pitch and speed.
-        await socket.send_json(ServerMessage.ready(PLAYBACK_SAMPLE_RATE).model_dump())
-        turn = Session(persona, socket.state.stt, socket.state.llm, socket.state.tts)
-        try:
-            await _drive(socket, turn)
-        except WebSocketDisconnect:
-            return
-
     @app.websocket("/ws/live/{pack}/{character}")
     async def live(socket: WebSocket, pack: str, character: str) -> None:
+        settings: Settings = socket.state.settings
+        expected = settings.access_token
+        if expected and not compare_digest(socket.query_params.get("token", ""), expected):
+            # Refused before accepting: this socket spends metered credentials.
+            logger.warning("rejected an unauthenticated connection")
+            await socket.close(code=4401, reason="unauthorised")
+            return
+
         registry: CharacterRegistry = socket.state.characters
         try:
             persona = registry.get(f"{pack}/{character}")
@@ -153,9 +146,23 @@ def create_app() -> FastAPI:
         # listener can speak while she is still talking.
         async def read() -> None:
             while True:
-                message = decode(await socket.receive_text())
+                try:
+                    message = decode(await socket.receive_text())
+                except WebSocketDisconnect:
+                    # Without this the session waits forever for input that
+                    # will never arrive, holding its upstream connections open.
+                    await session.interrupt()
+                    await session.close_input()
+                    return
+                except MalformedMessageError:
+                    # Report and keep listening: one bad frame should not end
+                    # a conversation that is otherwise going fine.
+                    await socket.send_json(ServerMessage.error("malformed message").model_dump())
+                    continue
                 if isinstance(message, AudioFrame):
                     await session.offer(message.pcm_bytes())
+                elif isinstance(message, VisionFrame):
+                    session.see(message.jpeg_bytes())
                 elif isinstance(message, InterruptSignal):
                     await session.interrupt()
                 else:
@@ -163,36 +170,25 @@ def create_app() -> FastAPI:
                     return
 
         reader = asyncio.create_task(read())
+        replies = session.run()
+        logger.info("session opened: %s/%s", pack, character)
         try:
-            async for outbound in session.run():
+            async for outbound in replies:
                 await socket.send_json(outbound.model_dump())
-        except (WebSocketDisconnect, MalformedMessageError):
+        except WebSocketDisconnect:
             pass
+        except Exception:
+            logger.exception("session failed: %s/%s", pack, character)
         finally:
+            # Closing the generator stops the producer rather than leaving it
+            # streaming into a queue nobody is reading.
+            await replies.aclose()
             reader.cancel()
             with contextlib.suppress(asyncio.CancelledError, WebSocketDisconnect):
                 await reader
+            logger.info("session closed: %s/%s", pack, character)
 
     return app
-
-
-async def _drive(socket: WebSocket, turn: Session) -> None:
-    """Read inbound frames until the client stops, then stream the reply."""
-    while True:
-        try:
-            message = decode(await socket.receive_text())
-        except MalformedMessageError:
-            await socket.send_json(ServerMessage.error("malformed message").model_dump())
-            continue
-        if isinstance(message, AudioFrame):
-            await turn.offer(message)
-            continue
-        await turn.close_input()
-        break
-
-    async for outbound in turn.run():
-        await socket.send_json(outbound.model_dump())
-    await socket.send_json({"type": "done"})
 
 
 app = create_app()
