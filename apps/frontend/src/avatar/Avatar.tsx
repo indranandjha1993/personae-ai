@@ -12,10 +12,13 @@ import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 
+import type { AudioFeatures } from '../audio/playback'
+import { BlinkController } from './blink'
+import { EmphasisTracker } from './emphasis'
+import { LipSync } from './lip-sync'
+import { GazeController } from './gaze'
 import {
   ACTIVITY_POSE,
-  MOUTH_AT_REST,
-  mouthOpenness,
   toPose,
   toVrmEmotion,
   type Activity,
@@ -38,7 +41,7 @@ export interface AvatarProps {
   gesture: string
   emotion: string
   activity: Activity
-  loudness: () => number
+  features: () => AudioFeatures
   onError: (message: string) => void
   onFramed: (bounds: { headY: number; height: number }) => void
 }
@@ -48,7 +51,7 @@ export function Avatar({
   gesture,
   emotion,
   activity,
-  loudness,
+  features,
   onError,
   onFramed,
 }: AvatarProps) {
@@ -63,8 +66,11 @@ export function Avatar({
     lean: 0,
   })
   const clock = useRef(0)
-  const nextBlink = useRef(2)
-  const blink = useRef(0)
+  const gaze = useRef(new GazeController())
+  const blink = useRef(new BlinkController())
+  const focus = useRef(new THREE.Vector3())
+  const lip = useRef(new LipSync())
+  const emphasis = useRef(new EmphasisTracker())
 
   useEffect(() => {
     let cancelled = false
@@ -91,8 +97,22 @@ export function Avatar({
           object.frustumCulled = false
           // Props and limbs that intrude on a portrait. Matching by name keeps
           // the clothing intact, which a bounds test does not.
-          if (/robo|arm|hand/i.test(object.name)) object.visible = false
+          // The prop arm is a separate mesh and simply goes.
+          if (/robo/i.test(object.name)) object.visible = false
         })
+
+        // This model binds with the arms raised, not in a T-pose: the hands
+        // rest above the head. Sleeves belong to the clothing mesh, so hiding
+        // the arm bones only leaves the fabric stretched -- the arms have to be
+        // brought down instead. Roughly a right angle from vertical puts them
+        // at the sides, where the portrait crop hides them.
+        for (const [bone, roll] of [
+          ['leftUpperArm', -1.45],
+          ['rightUpperArm', 1.45],
+        ] as const) {
+          const node = loaded.humanoid.getNormalizedBoneNode(bone)
+          if (node) node.rotation.z = roll
+        }
 
         loaded.scene.updateMatrixWorld(true)
         const headNode = loaded.humanoid.getNormalizedBoneNode('head')
@@ -119,7 +139,10 @@ export function Avatar({
     }
   }, [vrm])
 
-  useFrame((_, delta) => {
+  // useFrame runs on the render loop, outside React's render phase, so mutating
+  // the scene graph here is the intended pattern rather than a violation.
+  /* eslint-disable react-hooks/immutability */
+  useFrame(({ camera }, delta) => {
     if (!vrm) return
     clock.current += delta
 
@@ -130,11 +153,16 @@ export function Avatar({
     const pose = ACTIVITY_POSE[activity]
     const lift = EMOTION_POSTURE[vrmEmotion] ?? 0
 
+    // One analyser read per frame, shared by the mouth and the accent tracker.
+    const voice = features()
+    const mouth = lip.current.update(voice, delta)
+    const accent = emphasis.current.update(voice.rms, delta, activity === 'speaking')
+    blink.current.onPause(lip.current.pauseSeconds)
+
     s.armSwing = damp(s.armSwing, target.armSwing, SMOOTHING, delta)
     s.headTilt = damp(s.headTilt, target.headTilt, SMOOTHING, delta)
     s.torsoTwist = damp(s.torsoTwist, target.torsoTwist, SMOOTHING, delta)
     // The mouth tracks loudness faster than the body, or speech looks dubbed.
-    s.mouth = damp(s.mouth, Math.max(MOUTH_AT_REST, mouthOpenness(loudness())), SMOOTHING * 2.2, delta)
     s.pitch = damp(s.pitch, pose.headPitch, SMOOTHING * 0.55, delta)
     s.yaw = damp(s.yaw, pose.headYaw, SMOOTHING * 0.55, delta)
     s.lean = damp(s.lean, pose.lean, SMOOTHING * 0.55, delta)
@@ -144,7 +172,9 @@ export function Avatar({
 
     const head = vrm.humanoid.getNormalizedBoneNode('head')
     if (head) {
-      head.rotation.x = s.headTilt + s.pitch + breath * 0.5 - lift * 0.12
+      // The nod is additive, so it rides on top of the pose rather than
+      // fighting the damped values.
+      head.rotation.x = s.headTilt + s.pitch + breath * 0.5 - lift * 0.12 + accent.nod
       head.rotation.y = s.torsoTwist * 0.6 + s.yaw + drift
       head.rotation.z = s.yaw * 0.25
     }
@@ -161,12 +191,17 @@ export function Avatar({
       chest.rotation.x = breath * 0.6 - lift * 0.04 + s.lean * 0.25
     }
 
+    const blinkCtl = blink.current
     const expressions = vrm.expressionManager
     if (expressions) {
-      // One viseme only. Blending several stacks their morphs past full weight
-      // at speech volumes, which distorts the face -- on this model it dragged
-      // the eyes shut while talking.
-      expressions.setValue('aa', s.mouth)
+      // The full mouth: five vowel shapes blended across an openness and
+      // frontness plane, with the jaw and width driven separately so the mouth
+      // can be quick without the vowel identity flickering.
+      expressions.setValue('aa', mouth.aa)
+      expressions.setValue('ih', mouth.ih)
+      expressions.setValue('ou', mouth.ou)
+      expressions.setValue('ee', mouth.ee)
+      expressions.setValue('oh', mouth.oh)
 
       // 'happy' and 'relaxed' are authored as closed-eye expressions on many
       // models, so they are held well below full weight; the others reshape
@@ -177,25 +212,34 @@ export function Avatar({
         expressions.setValue(preset, preset === vrmEmotion ? emotionWeight : 0)
       }
 
-      if (clock.current > nextBlink.current) {
-        blink.current = 1
-        nextBlink.current =
-          clock.current + (2.2 + Math.random() * 3.4) / Math.max(pose.blinkRate, 0.2)
-      }
-      blink.current = damp(blink.current, 0, 16, delta)
-      // An expression that already narrows the eyes must not also blink, or
-      // they close entirely.
-      const narrowed = closesEyes ? emotionWeight : 0
-      expressions.setValue('blink', Math.max(0, blink.current - narrowed))
+      // An expression that already narrows the eyes shortens the blink rather
+      // than stacking with it.
+      blinkCtl.onActivity(activity)
+      const lid = blinkCtl.update(delta, activity, closesEyes ? emotionWeight : 0)
+      expressions.setValue('blink', lid)
 
-      // Gaze morphs distort the eyes past low weights, so the head carries
-      // most of the movement and the eyes only hint at it.
-      expressions.setValue('lookLeft', Math.min(0.3, Math.max(0, s.yaw)))
-      expressions.setValue('lookRight', Math.min(0.3, Math.max(0, -s.yaw)))
+      // Brows move unevenly on stressed words; a face that raises both by the
+      // same amount reads as a mask.
+      expressions.setValue('eye_brow_up_L', accent.browLeft)
+      expressions.setValue('eye_brow_up_R', accent.browRight)
+    }
+
+    // Gaze last, before the update that applies it. Pointing lookAt at the
+    // camera makes the eyes hold the viewer through head movement -- the eyes
+    // counter-rotate for free, where the old code pushed them the same way the
+    // head turned.
+    const lookAt = vrm.lookAt
+    if (lookAt) {
+      lookAt.lookAt(camera.getWorldPosition(focus.current))
+      const aim = gaze.current.update(activity, delta, 0, false)
+      blinkCtl.onSaccade(gaze.current.lastSaccadeDegrees)
+      lookAt.yaw += aim.yaw
+      lookAt.pitch += aim.pitch
     }
 
     vrm.update(delta)
   })
+  /* eslint-enable react-hooks/immutability */
 
   return vrm ? <primitive object={vrm.scene} /> : null
 }

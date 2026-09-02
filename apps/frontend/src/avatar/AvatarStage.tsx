@@ -4,6 +4,7 @@ import { Canvas, useThree } from '@react-three/fiber'
 import { Suspense, useCallback, useEffect, useState } from 'react'
 import * as THREE from 'three'
 
+import type { AudioFeatures } from '../audio/playback'
 import { Avatar } from './Avatar'
 import { type Activity } from './expression-map'
 
@@ -13,7 +14,7 @@ export interface AvatarStageProps {
   gesture: string
   emotion: string
   activity: Activity
-  loudness: () => number
+  features: () => AudioFeatures
 }
 
 interface Bounds {
@@ -37,7 +38,12 @@ function FrameFace({ bounds }: { bounds: Bounds | null }) {
   return null
 }
 
-export function AvatarStage({ gesture, emotion, activity, loudness }: AvatarStageProps) {
+export function AvatarStage({
+  gesture,
+  emotion,
+  activity,
+  features,
+}: AvatarStageProps) {
   const [bounds, setBounds] = useState<Bounds | null>(null)
   const [failure, setFailure] = useState('')
 
@@ -70,7 +76,7 @@ export function AvatarStage({ gesture, emotion, activity, loudness }: AvatarStag
               gesture={gesture}
               emotion={emotion}
               activity={activity}
-              loudness={loudness}
+              features={features}
               onError={handleError}
               onFramed={handleFramed}
             />

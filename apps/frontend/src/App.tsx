@@ -46,7 +46,7 @@ export function App() {
 function Conversation({ characterId }: { characterId: string }) {
   const {
     status, transcript, reply, gesture, emotion, detail,
-    loudness, cameraStream, cameraOn, toggleCamera, start, stop,
+    features, cameraStream, cameraOn, toggleCamera, start, stop,
   } = useConversation(characterId)
   const active = status !== 'idle' && status !== 'error'
 
@@ -58,7 +58,7 @@ function Conversation({ characterId }: { characterId: string }) {
             gesture={gesture}
             emotion={emotion}
             activity={status}
-            loudness={loudness}
+            features={features}
           />
         </Suspense>
         <span className="badge" data-state={status}>

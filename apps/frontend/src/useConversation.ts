@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { BargeInDetector, frameLevel } from './audio/barge-in'
 import { startCapture, type Capture } from './audio/capture'
-import { PcmPlayer } from './audio/playback'
+import { PcmPlayer, SILENT_FEATURES, type AudioFeatures } from './audio/playback'
 import { startCamera, type Camera } from './camera'
 import { decodePcm, DEFAULT_SAMPLE_RATE } from './protocol'
 import { openSession, type Session } from './session'
@@ -25,6 +25,8 @@ export interface Conversation {
   toggleCamera: () => void
   /** Current playback loudness, read per animation frame rather than as state. */
   loudness: () => number
+  /** Returns the current spectral shape of her voice. */
+  features: () => AudioFeatures
   transcript: string
   reply: string
   gesture: string
@@ -232,6 +234,15 @@ export function useConversation(characterId: string): Conversation {
   // it in state would re-render the whole tree 60 times a second.
   const loudness = useCallback(() => playerRef.current?.currentLoudness() ?? 0, [])
 
+  // Reused between frames so the render loop allocates nothing.
+  const featureScratch = useRef<AudioFeatures>({ ...SILENT_FEATURES })
+  const features = useCallback(
+    () =>
+      playerRef.current?.readFeatures(featureScratch.current) ??
+      Object.assign(featureScratch.current, SILENT_FEATURES),
+    [],
+  )
+
   return {
     status,
     transcript,
@@ -240,6 +251,7 @@ export function useConversation(characterId: string): Conversation {
     emotion,
     detail,
     loudness,
+    features,
     cameraStream,
     cameraOn: cameraStream !== null,
     toggleCamera,
