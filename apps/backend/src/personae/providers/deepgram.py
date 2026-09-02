@@ -18,6 +18,9 @@ logger = logging.getLogger(__name__)
 
 STT_SAMPLE_RATE = 16_000
 
+# Deepgram closes an idle socket after 10s; keep well inside that window.
+KEEPALIVE_INTERVAL_S = 5.0
+
 TTS_SAMPLE_RATE = PLAYBACK_SAMPLE_RATE
 
 
@@ -76,9 +79,30 @@ class DeepgramStt:
 
     @staticmethod
     async def _pump(connection: object, audio: AsyncIterator[bytes]) -> None:
-        """Forward captured audio until the caller stops producing it."""
-        async for chunk in audio:
-            await connection.send_media(chunk)  # type: ignore[attr-defined]
+        """Forward captured audio, keeping the socket alive through silence."""
+        pending: asyncio.Task[bytes] | None = None
+        iterator = audio.__aiter__()
+        try:
+            while True:
+                if pending is None:
+                    pending = asyncio.create_task(anext(iterator))  # type: ignore[arg-type]
+                done, _ = await asyncio.wait({pending}, timeout=KEEPALIVE_INTERVAL_S)
+                if pending not in done:
+                    # Deepgram closes the socket with a 1011 if nothing arrives
+                    # within its timeout window, and a listener who says nothing
+                    # for a few seconds is a conversation, not a fault.
+                    await connection.send_keep_alive()  # type: ignore[attr-defined]
+                    continue
+                try:
+                    chunk = pending.result()
+                except StopAsyncIteration:
+                    break
+                finally:
+                    pending = None
+                await connection.send_media(chunk)  # type: ignore[attr-defined]
+        finally:
+            if pending is not None:
+                pending.cancel()
         await connection.send_close_stream()  # type: ignore[attr-defined]
 
 

@@ -44,6 +44,14 @@ def _repo_root() -> Path:
 
 REPO_ROOT = _repo_root()
 
+# uvicorn configures only its own loggers, so without this the application's
+# own records -- including provider failures -- are silently discarded
+# whichever way the server was launched.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+
 logger = logging.getLogger(__name__)
 
 
