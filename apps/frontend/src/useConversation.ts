@@ -113,9 +113,16 @@ export function useConversation(characterId: string): Conversation {
     setStatus('listening')
 
     // AudioContext must be created from the user gesture that called start().
-    // The context is created now, from the user gesture; the player waits for
-    // the server to announce the rate its audio actually uses.
-    const context = new AudioContext()
+    //
+    // It runs at the rate her voice is synthesised at. Left at the device
+    // default, the browser resamples every buffer as it is scheduled, and on
+    // the small chunks that arrive over a socket that resampling is audibly
+    // rough. Matching the source rate means it never has to.
+    //
+    // The player is still told the rate the server announces, so a server
+    // synthesising at something else stays correct -- it just costs the
+    // resampling this avoids in the common case.
+    const context = new AudioContext({ sampleRate: DEFAULT_SAMPLE_RATE })
     contextRef.current = context
     let player: PcmPlayer | null = null
 
