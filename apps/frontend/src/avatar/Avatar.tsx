@@ -17,14 +17,52 @@ import { BlinkController } from './blink'
 import { EmphasisTracker } from './emphasis'
 import { LipSync } from './lip-sync'
 import { GazeController } from './gaze'
+import { blendPoses, REST, toBodyPose } from './gestures'
+import { applyBodyPose } from './rig'
 import {
   ACTIVITY_POSE,
-  toPose,
   toVrmEmotion,
   type Activity,
 } from './expression-map'
 
 const SMOOTHING = 9
+
+/**
+ * How quickly a gesture reaches its pose.
+ *
+ * Slower than the head, which tracks the voice: an arm that snaps into
+ * position reads as a cut rather than a movement. About a third of a second
+ * from rest to a full gesture, which is roughly human.
+ */
+const GESTURE_EASE = 3.2
+
+/**
+ * Skin tint, multiplied over the model's own texture.
+ *
+ * A factor rather than a flat colour, so the painted shading and the blush at
+ * the cheeks survive: white leaves the model exactly as its author made it,
+ * and warmer or deeper tones shift it without flattening the detail.
+ */
+const SKIN_TINT = new THREE.Color(0.93, 0.78, 0.7)
+
+/** Materials that make up her skin, by the names this model uses. */
+const SKIN_MATERIALS = /^(body_bake|body_nm)$/
+
+function tintSkin(object: THREE.Object3D): void {
+  if (!(object instanceof THREE.Mesh)) return
+  const material = object.material as THREE.Material | THREE.Material[]
+  for (const entry of Array.isArray(material) ? material : [material]) {
+    if (!SKIN_MATERIALS.test(entry.name)) continue
+    // MToon keeps a separate shade colour for the lit and unlit sides; both
+    // are tinted, or the shadowed half of her face stays the original tone.
+    const tintable = entry as THREE.Material & {
+      color?: THREE.Color
+      shadeColorFactor?: THREE.Color
+    }
+    tintable.color?.multiply(SKIN_TINT)
+    tintable.shadeColorFactor?.multiply(SKIN_TINT)
+  }
+}
 
 /** How far each emotion opens or closes the posture, for models without blendshapes. */
 const EMOTION_POSTURE: Record<string, number> = {
@@ -43,7 +81,7 @@ export interface AvatarProps {
   activity: Activity
   features: () => AudioFeatures
   onError: (message: string) => void
-  onFramed: (bounds: { headY: number; height: number }) => void
+  onFramed: (bounds: { headY: number; topY: number; height: number }) => void
 }
 
 export function Avatar({
@@ -57,7 +95,6 @@ export function Avatar({
 }: AvatarProps) {
   const [vrm, setVrm] = useState<VRM | null>(null)
   const state = useRef({
-    armSwing: 0,
     headTilt: 0,
     torsoTwist: 0,
     mouth: 0,
@@ -66,6 +103,7 @@ export function Avatar({
     lean: 0,
   })
   const clock = useRef(0)
+  const posed = useRef(REST)
   const gaze = useRef(new GazeController())
   const blink = useRef(new BlinkController())
   const focus = useRef(new THREE.Vector3())
@@ -99,20 +137,12 @@ export function Avatar({
           // the clothing intact, which a bounds test does not.
           // The prop arm is a separate mesh and simply goes.
           if (/robo/i.test(object.name)) object.visible = false
+
+          tintSkin(object)
         })
 
-        // This model binds with the arms raised, not in a T-pose: the hands
-        // rest above the head. Sleeves belong to the clothing mesh, so hiding
-        // the arm bones only leaves the fabric stretched -- the arms have to be
-        // brought down instead. Roughly a right angle from vertical puts them
-        // at the sides, where the portrait crop hides them.
-        for (const [bone, roll] of [
-          ['leftUpperArm', -1.45],
-          ['rightUpperArm', 1.45],
-        ] as const) {
-          const node = loaded.humanoid.getNormalizedBoneNode(bone)
-          if (node) node.rotation.z = roll
-        }
+        // The arms are posed every frame by the rig, which corrects for this
+        // model binding with them raised rather than in a T-pose.
 
         loaded.scene.updateMatrixWorld(true)
         const headNode = loaded.humanoid.getNormalizedBoneNode('head')
@@ -120,7 +150,9 @@ export function Avatar({
         const headY = headNode
           ? new THREE.Vector3().setFromMatrixPosition(headNode.matrixWorld).y
           : box.max.y * 0.93
-        onFramed({ headY, height: box.max.y - box.min.y })
+        // The head bone sits at the base of the skull; the crown, hair
+        // included, is the box top -- framing from the bone crops the head.
+        onFramed({ headY, topY: box.max.y, height: box.max.y - box.min.y })
         setVrm(loaded)
       },
       () => {
@@ -146,7 +178,12 @@ export function Avatar({
     if (!vrm) return
     clock.current += delta
 
-    const target = toPose(gesture)
+    // The pose eases toward the gesture rather than snapping: a hand that
+    // arrives instantly reads as a cut, not a movement.
+    const wanted = toBodyPose(gesture)
+    posed.current = blendPoses(posed.current, wanted, Math.min(1, delta * GESTURE_EASE))
+    applyBodyPose(vrm, posed.current)
+    const target = { headTilt: posed.current.headTilt, torsoTwist: posed.current.torsoTwist }
     const s = state.current
     const damp = THREE.MathUtils.damp
     const vrmEmotion = toVrmEmotion(emotion)
@@ -159,7 +196,6 @@ export function Avatar({
     const accent = emphasis.current.update(voice.rms, delta, activity === 'speaking')
     blink.current.onPause(lip.current.pauseSeconds)
 
-    s.armSwing = damp(s.armSwing, target.armSwing, SMOOTHING, delta)
     s.headTilt = damp(s.headTilt, target.headTilt, SMOOTHING, delta)
     s.torsoTwist = damp(s.torsoTwist, target.torsoTwist, SMOOTHING, delta)
     // The mouth tracks loudness faster than the body, or speech looks dubbed.
@@ -197,7 +233,9 @@ export function Avatar({
       // The full mouth: five vowel shapes blended across an openness and
       // frontness plane, with the jaw and width driven separately so the mouth
       // can be quick without the vowel identity flickering.
-      expressions.setValue('aa', mouth.aa)
+      // The jaw rides under the vowels as a floor: with every vowel at zero
+      // the lips still part slightly, so the mouth line never disappears.
+      expressions.setValue('aa', Math.min(1, mouth.aa + mouth.jaw))
       expressions.setValue('ih', mouth.ih)
       expressions.setValue('ou', mouth.ou)
       expressions.setValue('ee', mouth.ee)

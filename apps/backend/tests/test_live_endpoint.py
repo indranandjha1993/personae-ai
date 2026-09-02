@@ -18,8 +18,12 @@ def client() -> Iterator[TestClient]:
         yield test_client
 
 
-def _collect(socket: object, limit: int = 40) -> list[dict[str, object]]:
-    """Drain messages up to and including the terminal 'done'."""
+def _collect(socket: object, limit: int = 120) -> list[dict[str, object]]:
+    """Drain messages up to and including the terminal 'done'.
+
+    The limit is generous: a reply carries audio and an expression per
+    sentence, so a long one runs to dozens of messages before the caption.
+    """
     messages: list[dict[str, object]] = []
     for _ in range(limit):
         message = socket.receive_json()  # type: ignore[attr-defined]

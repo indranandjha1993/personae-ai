@@ -62,7 +62,10 @@ export function useConversation(characterId: string): Conversation {
   const [playbackDone, setPlaybackDone] = useState(false)
   const [turnId, setTurnId] = useState(0)
   const inputLevelRef = useRef(0)
-  const queued = useRef<{ text: string; playedBy: number | null }[]>([])
+  const queued = useRef<
+    { text: string; playedBy: number | null; gesture?: string; emotion?: string }[]
+  >([])
+  const pendingExpression = useRef<{ gesture: string; emotion: string } | null>(null)
   const suppressing = useRef(false)
 
   const captureRef = useRef<Capture | null>(null)
@@ -144,6 +147,7 @@ export function useConversation(characterId: string): Conversation {
             setTurnFinished(false)
             setPlaybackDone(false)
             queued.current = []
+            pendingExpression.current = null
             setTurnId((previous) => previous + 1)
             // A new turn: whatever was cut off before is finished with, and
             // the next utterance gets a fresh still.
@@ -156,7 +160,8 @@ export function useConversation(characterId: string): Conversation {
             // Held until its audio has actually played. The socket delivers
             // far faster than real time, so revealing on arrival would put the
             // whole reply on screen while she is still on the first sentence.
-            queued.current.push({ text: message.text, playedBy: null })
+            queued.current.push({ text: message.text, playedBy: null, ...pendingExpression.current })
+            pendingExpression.current = null
             break
           case 'reply':
             // Closes the turn. The full text supersedes what was accumulated,
@@ -172,8 +177,11 @@ export function useConversation(characterId: string): Conversation {
             }
             break
           case 'expression':
-            setGesture(message.gesture)
-            setEmotion(message.emotion)
+            // Held for the sentence it belongs to. The wire runs seconds
+            // ahead of the voice, so applying on arrival moves her body to
+            // words she has not said yet.
+            if (suppressing.current) break
+            pendingExpression.current = { gesture: message.gesture, emotion: message.emotion }
             break
           case 'ready':
             player = new PcmPlayer(context, message.sample_rate)
@@ -198,6 +206,8 @@ export function useConversation(characterId: string): Conversation {
             break
           case 'interrupted':
             suppressing.current = false
+            pendingExpression.current = null
+            setGesture('idle')
             // She stopped because we spoke over her; go straight back to
             // listening rather than reporting an error. Whatever she managed
             // to say is now on the record.
@@ -277,6 +287,8 @@ export function useConversation(characterId: string): Conversation {
           // add sentences to the caption that were never heard.
           suppressing.current = true
           queued.current = []
+          pendingExpression.current = null
+          setGesture('idle')
           session.interrupt()
           setStatus('listening')
         }
@@ -353,8 +365,17 @@ export function useConversation(characterId: string): Conversation {
         setSpokenSoFar((said) =>
           [said, ...heard.map((pending) => pending.text)].filter(Boolean).join(' '),
         )
+        // Her body moves with the sentence being heard, not with the wire.
+        const cued = heard.filter((pending) => pending.gesture !== undefined).at(-1)
+        if (cued?.gesture !== undefined) setGesture(cued.gesture)
+        if (cued?.emotion !== undefined) setEmotion(cued.emotion)
       }
-      if (player.isFinished() && queued.current.length === 0) setPlaybackDone(true)
+      if (player.isFinished() && queued.current.length === 0) {
+        setPlaybackDone(true)
+        // The turn is over; hands come back down rather than holding the last
+        // gesture like a statue.
+        setGesture('idle')
+      }
     }, 100)
     return () => { window.clearInterval(tick) }
   }, [status])

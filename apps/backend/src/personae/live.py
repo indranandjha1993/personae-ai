@@ -11,7 +11,13 @@ from personae.packs.models import Character
 from personae.protocol import ServerMessage
 from personae.providers.base import LlmProvider, ProviderError, SttProvider, TtsProvider
 from personae.sentences import SentenceBuffer
-from personae.speech import farewell_marked, for_speech, strip_farewell
+from personae.speech import (
+    farewell_marked,
+    for_speech,
+    gesture_marks,
+    strip_farewell,
+    strip_gesture_marks,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -116,22 +122,24 @@ class LiveSession:
             try:
                 voice = self._character.voice
                 sentences = SentenceBuffer()
-                first = True
 
                 async def say(text: str) -> None:
                     """Synthesise one sentence and hand its audio onward."""
-                    nonlocal first
-                    speakable = for_speech(text)
+                    # She marks her own gestures: only she knows that "I'm not
+                    # sure" wants a shrug. Where she marks nothing, the text is
+                    # read for a cue, so plain replies still move.
+                    marked = gesture_marks(text)
+                    spoken_text = strip_gesture_marks(text)
+                    speakable = for_speech(spoken_text)
                     if not speakable:
                         return
-                    if first:
-                        # The face should move with the first sound, not with
-                        # the last word of the reply.
-                        gesture, emotion = expression.infer(speakable, self._character)
-                        await outbound.put(
-                            ServerMessage.expression(gesture=gesture, emotion=emotion)
-                        )
-                        first = False
+                    gesture, emotion = expression.infer(
+                        speakable, self._character, requested=marked
+                    )
+                    # Sent before the audio, so the movement begins with the
+                    # sound rather than trailing it, and changes per sentence
+                    # rather than being held for the whole reply.
+                    await outbound.put(ServerMessage.expression(gesture=gesture, emotion=emotion))
                     # Announced before its audio, so the caption can follow her
                     # voice rather than arriving in one block at the end.
                     await outbound.put(ServerMessage.speaking(speakable))
@@ -180,7 +188,7 @@ class LiveSession:
                     return
 
                 ending = farewell_marked(spoken)
-                spoken = strip_farewell(spoken)
+                spoken = strip_gesture_marks(strip_farewell(spoken))
                 # The caption follows the speech rather than preceding it.
                 await outbound.put(ServerMessage.reply(spoken))
 

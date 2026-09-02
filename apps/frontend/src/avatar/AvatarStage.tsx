@@ -19,18 +19,35 @@ export interface AvatarStageProps {
 
 interface Bounds {
   headY: number
+  /** The very top of the model, hair included. */
+  topY: number
   height: number
 }
 
-/** Frames the face from the model's measured head position. */
-function FrameFace({ bounds }: { bounds: Bounds | null }) {
+/**
+ * Frames the upper body from the model's measured head position.
+ *
+ * Head to roughly the waist, the way a video call frames someone: her hands
+ * have to be in shot for gesture to mean anything, while the face stays large
+ * enough to read expression and lip sync.
+ */
+function FrameUpperBody({ bounds }: { bounds: Bounds | null }) {
   const camera = useThree((state) => state.camera)
 
   useEffect(() => {
     if (!bounds) return
-    // Eyes sit above the head bone; a portrait wants them above centre.
-    const focusY = bounds.headY + bounds.height * 0.05
-    camera.position.set(0, focusY, bounds.height * 0.62)
+    // A little headroom above the crown, down to about the waist below. The
+    // head bone is the skull base, so headroom must come from the measured
+    // top of the model or the hair is cropped.
+    const top = bounds.topY + bounds.height * 0.04
+    const bottom = bounds.headY - bounds.height * 0.34
+    const focusY = (top + bottom) / 2
+    const span = top - bottom
+    const fov = 'fov' in camera ? camera.fov : 30
+    // Distance at which that span fills the frame vertically.
+    const distance = span / 2 / Math.tan((fov * Math.PI) / 360)
+
+    camera.position.set(0, focusY, distance)
     camera.lookAt(new THREE.Vector3(0, focusY, 0))
     camera.updateProjectionMatrix()
   }, [bounds, camera])
@@ -64,8 +81,8 @@ export function AvatarStage({
 
   return (
     <div className="stage">
-        <Canvas camera={{ position: [0, 1.4, 0.55], fov: 26 }} gl={{ alpha: true }}>
-          <FrameFace bounds={bounds} />
+        <Canvas camera={{ position: [0, 1.15, 1.25], fov: 30 }} gl={{ alpha: true }}>
+          <FrameUpperBody bounds={bounds} />
           {/* Matches the three-vrm basic example: one normalised directional
               light at Math.PI, which is what MToon is authored against. */}
           <directionalLight position={[1, 1, 1]} intensity={Math.PI} />

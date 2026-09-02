@@ -7,6 +7,7 @@ well-defined resting state.
 """
 
 import re
+from collections.abc import Sequence
 
 from personae.packs.models import Character
 
@@ -34,16 +35,25 @@ _GESTURE_HINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 
 
-def infer(text: str, character: Character) -> tuple[str, str]:
+def infer(text: str, character: Character, requested: Sequence[str] = ()) -> tuple[str, str]:
     """Return a (gesture, emotion) pair valid for ``character``.
 
-    Keyword hints alone leave most real replies on the resting pair, because a
-    model rarely writes the exact words in the table. Punctuation and shape are
-    therefore used as a second signal, so ordinary sentences still animate.
+    A gesture the speaker asked for wins, since only she knows what she meant.
+    Otherwise keyword hints are tried, and then the shape of the sentence:
+    hints alone leave most real replies at rest, because a model rarely writes
+    the exact words in the table.
     """
     lowered = text.lower()
     gestures = character.expression.gestures
     emotions = character.expression.emotions
+
+    for name in requested:
+        candidate = name if name.startswith("gesture-") else f"gesture-{name}"
+        if candidate in gestures:
+            emotion = _first_match(lowered, _EMOTION_HINTS, emotions)
+            if emotion == emotions[0]:
+                emotion = _shape_emotion(text, emotions)
+            return candidate, emotion
 
     gesture = _first_match(lowered, _GESTURE_HINTS, gestures)
     if gesture == gestures[0]:

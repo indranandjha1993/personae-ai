@@ -42,8 +42,11 @@ const FEATURE_TAU = 0.07
 
 /** Hold the shape through stop consonants rather than chattering shut. */
 const SILENCE_GRACE = 0.14
-/** Lips barely parted at rest; a closed seam reads as no mouth at all. */
-const JAW_AT_REST = 0.07
+/**
+ * Lips parted at rest; a closed seam reads as no mouth at all. Tuned for the
+ * upper-body framing, where the face is half the size it was in the portrait.
+ */
+const JAW_AT_REST = 0.16
 const JAW_MAX = 0.55
 /** Stacked morphs distort the mesh past this. */
 const VOWEL_CAP = 0.85

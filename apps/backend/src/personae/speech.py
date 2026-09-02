@@ -60,3 +60,19 @@ def for_speech(text: str) -> str:
     cleaned = re.sub(r"[ \t]+", " ", cleaned)
     cleaned = re.sub(r"\s+([.,;:!?])", r"\1", cleaned)
     return cleaned.strip()
+
+
+# She marks her own gestures inline, as *explain* or *shrug*. Keyword guessing
+# cannot tell that "I'm not sure" wants a shrug rather than a lecture; she
+# knows what she means, so she is asked to say.
+_GESTURE_MARK = re.compile(r"\*\s*([a-z][a-z-]{1,20})\s*\*")
+
+
+def gesture_marks(reply: str) -> list[str]:
+    """Gestures the reply asks for, in the order they appear."""
+    return [match.group(1).lower() for match in _GESTURE_MARK.finditer(reply)]
+
+
+def strip_gesture_marks(reply: str) -> str:
+    """Remove the markers; they are never spoken and never shown."""
+    return re.sub(r"\s{2,}", " ", _GESTURE_MARK.sub(" ", reply)).strip()

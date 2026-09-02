@@ -99,6 +99,3 @@ export function mouthOpenness(rms: number): number {
   return Math.min(1, normalised ** 0.6)
 }
 
-/** Resting mouth openness; fully closed lips read as no mouth at all. */
-export const MOUTH_AT_REST = 0.22
-
