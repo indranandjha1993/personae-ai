@@ -59,4 +59,8 @@ def test_server_expression_carries_gesture_and_emotion() -> None:
 def test_client_message_union_is_exhaustive() -> None:
     """The accepted variants are exactly those declared; nothing else parses."""
     variants = get_args(get_args(ClientMessage)[0])
-    assert {member.__name__ for member in variants} == {"AudioFrame", "StopSignal"}
+    assert {member.__name__ for member in variants} == {
+        "AudioFrame",
+        "StopSignal",
+        "InterruptSignal",
+    }

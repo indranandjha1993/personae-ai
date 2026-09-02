@@ -17,6 +17,11 @@ from personae.protocol import PLAYBACK_SAMPLE_RATE
 logger = logging.getLogger(__name__)
 
 STT_SAMPLE_RATE = 16_000
+
+# Silence after speech before Deepgram closes a turn. Long enough to survive a
+# thinking pause, short enough that a reply does not feel delayed.
+ENDPOINTING_MS = 800
+UTTERANCE_END_MS = 1000
 TTS_SAMPLE_RATE = PLAYBACK_SAMPLE_RATE
 
 
@@ -33,12 +38,20 @@ class DeepgramStt:
             encoding="linear16",
             sample_rate=STT_SAMPLE_RATE,
             channels=1,
-            interim_results=False,
             punctuate=True,
+            # Deepgram decides when a turn has ended, so a live conversation
+            # needs no push-to-talk. Interim results arrive first and are
+            # discarded; only finalised transcripts are yielded.
+            interim_results=True,
+            endpointing=ENDPOINTING_MS,
+            utterance_end_ms=UTTERANCE_END_MS,
+            vad_events=True,
         ) as connection:
             pump = asyncio.create_task(self._pump(connection, audio))
             try:
                 async for event in connection:
+                    if not _is_final(event):
+                        continue
                     text = _transcript_of(event)
                     if text:
                         yield text
@@ -78,6 +91,11 @@ class DeepgramTts:
             async for message in connection:
                 if isinstance(message, bytes):
                     yield message
+
+
+def _is_final(event: object) -> bool:
+    """True for a finalised transcript, false for an interim guess."""
+    return bool(getattr(event, "is_final", False) or getattr(event, "speech_final", False))
 
 
 def _transcript_of(event: object) -> str:

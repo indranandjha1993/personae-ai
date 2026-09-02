@@ -10,8 +10,9 @@ proportional to its input, so the pipeline can be exercised end to end.
 import array
 import asyncio
 import math
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 
+from personae.conversation import Message
 from personae.protocol import PLAYBACK_SAMPLE_RATE
 
 _SAMPLE_RATE = PLAYBACK_SAMPLE_RATE
@@ -36,7 +37,12 @@ class MockStt:
 class MockLlm:
     """Echoes the transcript back in fragments, as a streaming model would."""
 
-    async def respond(self, system_prompt: str, transcript: str) -> AsyncIterator[str]:
+    async def respond(
+        self,
+        system_prompt: str,
+        transcript: str,
+        history: Sequence[Message] = (),
+    ) -> AsyncIterator[str]:
         for fragment in (f'You said "{transcript}"', ", and I am a mock reply."):
             await asyncio.sleep(0)
             yield fragment

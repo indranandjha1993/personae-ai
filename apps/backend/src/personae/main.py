@@ -1,5 +1,7 @@
 """Application entry point."""
 
+import asyncio
+import contextlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -8,8 +10,14 @@ from typing import TypedDict
 from fastapi import FastAPI, Request, WebSocket
 from starlette.websockets import WebSocketDisconnect
 
+from personae.live import LiveSession
 from personae.packs.loader import CharacterRegistry, load_packs
-from personae.protocol import PLAYBACK_SAMPLE_RATE, AudioFrame, ServerMessage
+from personae.protocol import (
+    PLAYBACK_SAMPLE_RATE,
+    AudioFrame,
+    InterruptSignal,
+    ServerMessage,
+)
 from personae.providers.base import LlmProvider, SttProvider, TtsProvider
 from personae.providers.factory import build_llm, build_stt, build_tts
 from personae.session import MalformedMessageError, Session, decode
@@ -126,6 +134,43 @@ def create_app() -> FastAPI:
             await _drive(socket, turn)
         except WebSocketDisconnect:
             return
+
+    @app.websocket("/ws/live/{pack}/{character}")
+    async def live(socket: WebSocket, pack: str, character: str) -> None:
+        registry: CharacterRegistry = socket.state.characters
+        try:
+            persona = registry.get(f"{pack}/{character}")
+        except KeyError:
+            await socket.close(code=4004, reason="unknown character")
+            return
+
+        await socket.accept()
+        await socket.send_json(ServerMessage.ready(PLAYBACK_SAMPLE_RATE).model_dump())
+        session = LiveSession(persona, socket.state.stt, socket.state.llm, socket.state.tts)
+
+        # Reading and replying run concurrently: the whole point is that the
+        # listener can speak while she is still talking.
+        async def read() -> None:
+            while True:
+                message = decode(await socket.receive_text())
+                if isinstance(message, AudioFrame):
+                    await session.offer(message.pcm_bytes())
+                elif isinstance(message, InterruptSignal):
+                    await session.interrupt()
+                else:
+                    await session.close_input()
+                    return
+
+        reader = asyncio.create_task(read())
+        try:
+            async for outbound in session.run():
+                await socket.send_json(outbound.model_dump())
+        except (WebSocketDisconnect, MalformedMessageError):
+            pass
+        finally:
+            reader.cancel()
+            with contextlib.suppress(asyncio.CancelledError, WebSocketDisconnect):
+                await reader
 
     return app
 

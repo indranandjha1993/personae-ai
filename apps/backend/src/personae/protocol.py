@@ -51,7 +51,13 @@ class StopSignal(_Message):
     type: Literal["stop"]
 
 
-ClientMessage = Annotated[AudioFrame | StopSignal, Field(discriminator="type")]
+class InterruptSignal(_Message):
+    """The listener started talking over the reply."""
+
+    type: Literal["interrupt"]
+
+
+ClientMessage = Annotated[AudioFrame | StopSignal | InterruptSignal, Field(discriminator="type")]
 
 _client_adapter: TypeAdapter[ClientMessage] = TypeAdapter(ClientMessage)
 
@@ -85,6 +91,10 @@ class ServerMessage(_Message):
         return ExpressionMessage(type="expression", gesture=gesture, emotion=emotion)
 
     @staticmethod
+    def interrupted() -> "InterruptedMessage":
+        return InterruptedMessage(type="interrupted")
+
+    @staticmethod
     def error(detail: str) -> "ErrorMessage":
         return ErrorMessage(type="error", detail=detail)
 
@@ -116,6 +126,12 @@ class ExpressionMessage(ServerMessage):
     type: Literal["expression"]
     gesture: str
     emotion: str
+
+
+class InterruptedMessage(ServerMessage):
+    """The reply was cut short because the listener started speaking."""
+
+    type: Literal["interrupted"]
 
 
 class ErrorMessage(ServerMessage):

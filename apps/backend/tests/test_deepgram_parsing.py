@@ -40,3 +40,20 @@ def test_ignores_a_non_string_transcript() -> None:
     """The SDK returns generated models, so the shape is not guaranteed."""
     event = Event(channel=Channel(alternatives=[Alternative(transcript=42)]))
     assert _transcript_of(event) == ""
+
+
+@dataclass
+class Interim:
+    channel: object
+    is_final: bool = False
+    speech_final: bool = False
+
+
+def test_only_finalised_events_count_as_transcripts() -> None:
+    """Interim guesses change as you speak; answering one would be premature."""
+    from personae.providers.deepgram import _is_final
+
+    channel = Channel(alternatives=[Alternative(transcript="hello")])
+    assert not _is_final(Interim(channel=channel))
+    assert _is_final(Interim(channel=channel, is_final=True))
+    assert _is_final(Interim(channel=channel, speech_final=True))

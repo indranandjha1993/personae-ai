@@ -1,10 +1,11 @@
 """A character's speaking rate must reach the synthesiser."""
 
 import base64
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 
 import pytest
 
+from personae.conversation import Message
 from personae.packs.loader import load_packs
 from personae.protocol import AudioFrame, ServerMessage
 from personae.session import Session
@@ -36,7 +37,12 @@ class StubStt:
 
 
 class StubLlm:
-    def respond(self, system_prompt: str, transcript: str) -> AsyncIterator[str]:
+    def respond(
+        self,
+        system_prompt: str,
+        transcript: str,
+        history: Sequence[Message] = (),
+    ) -> AsyncIterator[str]:
         async def once() -> AsyncIterator[str]:
             yield "a reply"
 

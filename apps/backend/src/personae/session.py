@@ -9,7 +9,13 @@ from pydantic import ValidationError
 
 from personae import expression
 from personae.packs.models import Character
-from personae.protocol import AudioFrame, ServerMessage, StopSignal, parse_client_message
+from personae.protocol import (
+    AudioFrame,
+    InterruptSignal,
+    ServerMessage,
+    StopSignal,
+    parse_client_message,
+)
 from personae.providers.base import LlmProvider, SttProvider, TtsProvider
 
 logger = logging.getLogger(__name__)
@@ -67,7 +73,7 @@ class MalformedMessageError(Exception):
     """An inbound frame was not a valid protocol message."""
 
 
-def decode(raw: str) -> AudioFrame | StopSignal:
+def decode(raw: str) -> AudioFrame | StopSignal | InterruptSignal:
     """Parse one inbound frame.
 
     Both malformed JSON and a well-formed but invalid message surface as the

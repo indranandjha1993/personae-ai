@@ -7,9 +7,11 @@ particular provider's release cycle for no benefit.
 
 import json
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 
 import httpx
+
+from personae.conversation import Message
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +26,18 @@ class OpenAiCompatibleLlm:
         self._api_key = api_key
         self._model = model
 
-    async def respond(self, system_prompt: str, transcript: str) -> AsyncIterator[str]:
+    async def respond(
+        self,
+        system_prompt: str,
+        transcript: str,
+        history: Sequence[Message] = (),
+    ) -> AsyncIterator[str]:
         payload = {
             "model": self._model,
             "stream": True,
             "messages": [
                 {"role": "system", "content": system_prompt},
+                *history,
                 {"role": "user", "content": transcript},
             ],
         }

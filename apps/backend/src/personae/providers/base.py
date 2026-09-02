@@ -5,8 +5,10 @@ lets the application run on mocks with no credentials, and it keeps a vendor's
 types from leaking into domain code.
 """
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from typing import Protocol, runtime_checkable
+
+from personae.conversation import Message
 
 
 @runtime_checkable
@@ -22,8 +24,13 @@ class SttProvider(Protocol):
 class LlmProvider(Protocol):
     """Character-voiced text generation."""
 
-    def respond(self, system_prompt: str, transcript: str) -> AsyncIterator[str]:
-        """Yield the reply in streamed fragments."""
+    def respond(
+        self,
+        system_prompt: str,
+        transcript: str,
+        history: Sequence[Message] = (),
+    ) -> AsyncIterator[str]:
+        """Yield the reply in streamed fragments, given prior turns."""
         ...
 
 
