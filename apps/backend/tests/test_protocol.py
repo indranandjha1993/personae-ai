@@ -63,4 +63,17 @@ def test_client_message_union_is_exhaustive() -> None:
         "AudioFrame",
         "StopSignal",
         "InterruptSignal",
+        "VisionFrame",
     }
+
+
+def test_parses_a_camera_frame() -> None:
+    message = parse_client_message({"type": "vision", "jpeg": "AAECAw=="})
+    assert message.type == "vision"
+    assert message.jpeg_bytes() == bytes([0, 1, 2, 3])
+
+
+def test_rejects_an_oversized_camera_frame() -> None:
+    """A still is small; anything large is a mistake or an attack."""
+    with pytest.raises(ValidationError):
+        parse_client_message({"type": "vision", "jpeg": "A" * 3_000_000})

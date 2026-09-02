@@ -7,13 +7,24 @@ anything else is rejected before it reaches application code.
 
 import base64
 import binascii
+import json
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    TypeAdapter,
+    ValidationError,
+    field_validator,
+)
 
 # 16-bit PCM at 16 kHz is 32 kB per second; this caps a single frame at roughly
 # two seconds, which is far above the ~100 ms frames the client actually sends.
 MAX_FRAME_BYTES = 64_000
+
+# A downscaled still is well under this; anything larger is a mistake.
+MAX_IMAGE_BYTES = 1_500_000
 
 # Sample rate of the audio streamed back to clients. Providers synthesise at
 # this rate, and the client is told it on connect rather than assuming it.
@@ -51,13 +62,37 @@ class StopSignal(_Message):
     type: Literal["stop"]
 
 
+class VisionFrame(_Message):
+    """A camera still for the model to look at, attached to the next turn."""
+
+    type: Literal["vision"]
+    jpeg: str
+
+    @field_validator("jpeg")
+    @classmethod
+    def _must_be_decodable(cls, value: str) -> str:
+        try:
+            decoded = base64.b64decode(value, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError("jpeg must be valid base64") from exc
+        if len(decoded) > MAX_IMAGE_BYTES:
+            raise ValueError(f"frame exceeds {MAX_IMAGE_BYTES} bytes")
+        return value
+
+    def jpeg_bytes(self) -> bytes:
+        return base64.b64decode(self.jpeg, validate=True)
+
+
 class InterruptSignal(_Message):
     """The listener started talking over the reply."""
 
     type: Literal["interrupt"]
 
 
-ClientMessage = Annotated[AudioFrame | StopSignal | InterruptSignal, Field(discriminator="type")]
+ClientMessage = Annotated[
+    AudioFrame | StopSignal | InterruptSignal | VisionFrame,
+    Field(discriminator="type"),
+]
 
 _client_adapter: TypeAdapter[ClientMessage] = TypeAdapter(ClientMessage)
 
@@ -65,6 +100,26 @@ _client_adapter: TypeAdapter[ClientMessage] = TypeAdapter(ClientMessage)
 def parse_client_message(payload: object) -> ClientMessage:
     """Validate an inbound message, raising ValidationError if it is not one."""
     return _client_adapter.validate_python(payload)
+
+
+class MalformedMessageError(Exception):
+    """An inbound frame was not a valid protocol message."""
+
+
+def decode(raw: str) -> ClientMessage:
+    """Parse one inbound frame.
+
+    Malformed JSON and a well-formed but invalid message surface as the same
+    failure, because the client should not be able to tell them apart.
+    """
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise MalformedMessageError("payload is not valid JSON") from exc
+    try:
+        return parse_client_message(payload)
+    except ValidationError as exc:
+        raise MalformedMessageError(str(exc)) from exc
 
 
 class ServerMessage(_Message):
