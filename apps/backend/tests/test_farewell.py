@@ -28,3 +28,12 @@ def test_ordinary_brackets_are_left_alone() -> None:
 
 def test_a_farewell_reply_still_reads_naturally() -> None:
     assert strip_farewell("Good luck with it. [end]") == "Good luck with it."
+
+
+def test_the_persona_forbids_inventing_a_name_for_the_listener() -> None:
+    """Speech recognition mishears words as names, and she picked one up."""
+    from personae.main import REPO_ROOT
+    from personae.packs.loader import load_packs
+
+    prompt = load_packs([REPO_ROOT / "packs" / "bundled"]).get("bundled/seed").persona.prompt
+    assert "never invent a name" in prompt.lower()
