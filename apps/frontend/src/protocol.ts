@@ -16,6 +16,12 @@ export interface TranscriptMessage {
   text: string
 }
 
+/** What the listener is saying, while they are still saying it. */
+export interface HearingMessage {
+  type: 'hearing'
+  text: string
+}
+
 export interface SpeakingMessage {
   type: 'speaking'
   text: string
@@ -58,6 +64,7 @@ export type ServerMessage =
   | ReadyMessage
   | SpeakingMessage
   | TranscriptMessage
+  | HearingMessage
   | ReplyMessage
   | AudioMessage
   | ExpressionMessage
@@ -80,6 +87,7 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
         ? { type: 'ready', sample_rate: raw['sample_rate'], channels: raw['channels'] }
         : null
     case 'transcript':
+    case 'hearing':
     case 'reply':
     case 'speaking':
       return typeof raw['text'] === 'string'

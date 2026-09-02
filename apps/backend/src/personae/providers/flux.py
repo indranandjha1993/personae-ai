@@ -17,15 +17,19 @@ from deepgram import AsyncDeepgramClient
 from deepgram.speak.v2.types import SpeakV2Flush, SpeakV2Speak
 
 from personae.protocol import PLAYBACK_SAMPLE_RATE
+from personae.providers.base import Heard
 
 logger = logging.getLogger(__name__)
 
 STT_SAMPLE_RATE = 16_000
 TTS_SAMPLE_RATE = PLAYBACK_SAMPLE_RATE
 
-# How sure the model must be that a turn has ended. Deepgram's default; higher
-# means fewer words clipped off the end, at the cost of a longer wait.
-DEFAULT_EOT_THRESHOLD = 0.7
+# How sure the model must be that a turn has ended.
+#
+# Above Deepgram's 0.7 default: a person gathering their thought mid-sentence
+# should not be answered over. The cost is a little more delay before she
+# starts, which reads as patience rather than lag.
+DEFAULT_EOT_THRESHOLD = 0.8
 
 # How long a silence may run before the turn is closed regardless.
 DEFAULT_EOT_TIMEOUT_MS = 5_000
@@ -59,7 +63,7 @@ class FluxStt:
         self._eot_threshold = eot_threshold
         self._eot_timeout_ms = eot_timeout_ms
 
-    async def transcribe(self, audio: AsyncIterator[bytes]) -> AsyncIterator[str]:
+    async def transcribe(self, audio: AsyncIterator[bytes]) -> AsyncIterator[Heard]:
         async with self._client.listen.v2.connect(
             model=self.model,
             encoding="linear16",
@@ -77,15 +81,19 @@ class FluxStt:
                             getattr(event, "end_of_turn_confidence", None),
                             getattr(event, "transcript", None),
                         )
-                    # The model reports the whole turn once it is over; the
-                    # interim Updates are for a caller that wants to show
-                    # words as they land, which the caption already does from
-                    # the reply itself.
-                    if getattr(event, "event", None) != "EndOfTurn":
+                    kind = getattr(event, "event", None)
+                    if kind not in ("StartOfTurn", "Update", "EndOfTurn"):
                         continue
                     transcript = (getattr(event, "transcript", "") or "").strip()
+                    if kind != "EndOfTurn":
+                        # Provisional: shown as the listener speaks, so they can
+                        # see they are being heard rather than waiting to find
+                        # out afterwards.
+                        if transcript:
+                            yield Heard(transcript, final=False)
+                        continue
                     if transcript:
-                        yield transcript
+                        yield Heard(transcript, final=True)
             finally:
                 pump.cancel()
                 await asyncio.gather(pump, return_exceptions=True)

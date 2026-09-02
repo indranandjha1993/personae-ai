@@ -8,6 +8,7 @@ from personae.conversation import Message
 from personae.live import LiveSession
 from personae.packs.loader import load_packs
 from personae.protocol import ServerMessage
+from personae.providers.base import Heard
 
 
 class RecordingTts:
@@ -26,11 +27,11 @@ class RecordingTts:
 
 
 class StubStt:
-    def transcribe(self, audio: AsyncIterator[bytes]) -> AsyncIterator[str]:
-        async def once() -> AsyncIterator[str]:
+    def transcribe(self, audio: AsyncIterator[bytes]) -> AsyncIterator[Heard]:
+        async def once() -> AsyncIterator[Heard]:
             async for _ in audio:
                 break
-            yield "hello"
+            yield Heard("hello", final=True)
 
         return once()
 

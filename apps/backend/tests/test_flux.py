@@ -45,8 +45,14 @@ class FakeConnection:
 
 
 @pytest.mark.timeout(10)
-async def test_only_a_finished_turn_is_transcribed(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Interim updates are the model thinking aloud, not something to answer."""
+async def test_words_are_shown_while_still_being_spoken(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The listener should see themselves being heard as they talk.
+
+    Interim updates are provisional and never answered, but showing them is
+    what makes the conversation feel live rather than turn-based.
+    """
     connection = FakeConnection(
         [
             Turn("StartOfTurn", "Hello"),
@@ -60,7 +66,14 @@ async def test_only_a_finished_turn_is_transcribed(monkeypatch: pytest.MonkeyPat
     async def audio() -> AsyncIterator[bytes]:
         yield b"\x00\x01"
 
-    assert [text async for text in stt.transcribe(audio())] == ["Hello, how are you?"]
+    heard = [item async for item in stt.transcribe(audio())]
+
+    assert [(h.text, h.final) for h in heard] == [
+        ("Hello", False),
+        ("Hello how", False),
+        ("Hello, how are you?", True),
+    ]
+    assert sum(1 for h in heard if h.final) == 1, "only one turn is answered"
 
 
 @pytest.mark.timeout(10)
@@ -73,7 +86,7 @@ async def test_an_empty_turn_is_not_answered(monkeypatch: pytest.MonkeyPatch) ->
     async def audio() -> AsyncIterator[bytes]:
         yield b"\x00\x01"
 
-    assert [text async for text in stt.transcribe(audio())] == []
+    assert [item async for item in stt.transcribe(audio())] == []
 
 
 def _client_yielding(connection: FakeConnection) -> Any:

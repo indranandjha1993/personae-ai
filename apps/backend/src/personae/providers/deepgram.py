@@ -13,6 +13,7 @@ from deepgram import AsyncDeepgramClient
 from deepgram.speak.v1.types.speak_v1text import SpeakV1Text
 
 from personae.protocol import PLAYBACK_SAMPLE_RATE
+from personae.providers.base import Heard
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ class DeepgramStt:
         self._endpointing_ms = endpointing_ms
         self._utterance_end_ms = utterance_end_ms
 
-    async def transcribe(self, audio: AsyncIterator[bytes]) -> AsyncIterator[str]:
+    async def transcribe(self, audio: AsyncIterator[bytes]) -> AsyncIterator[Heard]:
         async with self._client.listen.v1.connect(
             model=self.model,
             encoding="linear16",
@@ -51,7 +52,7 @@ class DeepgramStt:
             punctuate=True,
             # Deepgram decides when a turn has ended, so a live conversation
             # needs no push-to-talk. Interim results arrive first and are
-            # discarded; only finalised transcripts are yielded.
+            # shown as provisional, so the listener sees they are being heard.
             interim_results=True,
             endpointing=self._endpointing_ms,
             utterance_end_ms=self._utterance_end_ms,
@@ -66,11 +67,17 @@ class DeepgramStt:
                     if type(event).__name__.endswith("UtteranceEnd"):
                         pending = buffer.flush()
                         if pending:
-                            yield pending
+                            yield Heard(pending, final=True)
                         continue
                     utterance = buffer.take(event)
                     if utterance:
-                        yield utterance
+                        yield Heard(utterance, final=True)
+                        continue
+                    # Not a finished turn, but words worth showing while they
+                    # are still being spoken.
+                    interim = _transcript_of(event)
+                    if interim and not getattr(event, "is_final", False):
+                        yield Heard(" ".join([*buffer.parts, interim]).strip(), final=False)
             finally:
                 # The socket is closing either way; make sure the feeding task
                 # does not outlive it and write to a dead connection.
@@ -145,6 +152,11 @@ class UtteranceBuffer:
 
     def __init__(self) -> None:
         self._parts: list[str] = []
+
+    @property
+    def parts(self) -> list[str]:
+        """What has been finalised so far within the current utterance."""
+        return self._parts
 
     def take(self, event: object) -> str | None:
         """Return a complete utterance, or None if more is still coming."""

@@ -14,6 +14,7 @@ from collections.abc import AsyncIterator, Sequence
 
 from personae.conversation import Message
 from personae.protocol import PLAYBACK_SAMPLE_RATE
+from personae.providers.base import Heard
 
 _SAMPLE_RATE = PLAYBACK_SAMPLE_RATE
 _TONE_HZ = 220.0
@@ -26,12 +27,12 @@ class MockStt:
     def __init__(self, phrase: str = "this is a mock transcript") -> None:
         self._phrase = phrase
 
-    async def transcribe(self, audio: AsyncIterator[bytes]) -> AsyncIterator[str]:
+    async def transcribe(self, audio: AsyncIterator[bytes]) -> AsyncIterator[Heard]:
         async for chunk in audio:
             if _is_silence(chunk):
                 continue
             await asyncio.sleep(0)
-            yield self._phrase
+            yield Heard(self._phrase, final=True)
 
 
 class MockLlm:

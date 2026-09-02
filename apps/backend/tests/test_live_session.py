@@ -8,6 +8,7 @@ from personae.live import MAX_PENDING_AUDIO, LiveSession
 from personae.packs.loader import load_packs
 from personae.packs.models import Character
 from personae.protocol import ServerMessage
+from personae.providers.base import Heard
 
 
 def _character() -> Character:
@@ -22,12 +23,12 @@ class ScriptedStt:
     def __init__(self, utterances: list[str]) -> None:
         self._utterances = utterances
 
-    def transcribe(self, audio: AsyncIterator[bytes]) -> AsyncIterator[str]:
-        async def run() -> AsyncIterator[str]:
+    def transcribe(self, audio: AsyncIterator[bytes]) -> AsyncIterator[Heard]:
+        async def run() -> AsyncIterator[Heard]:
             index = 0
             async for _ in audio:
                 if index < len(self._utterances):
-                    yield self._utterances[index]
+                    yield Heard(self._utterances[index], final=True)
                     index += 1
 
         return run()

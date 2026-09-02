@@ -89,12 +89,18 @@ class LiveSession:
         self._frame = jpeg
 
     async def run(self) -> AsyncGenerator[ServerMessage]:
-        async for transcript in self._stt.transcribe(self._audio()):
-            if not transcript.strip():
+        async for heard in self._stt.transcribe(self._audio()):
+            if not heard.text.strip():
+                continue
+            # Provisional words go straight to the caption: seeing themselves
+            # transcribed as they speak is what tells the listener they are
+            # being heard, and it costs nothing to show.
+            if not heard.final:
+                yield ServerMessage.hearing(heard.text)
                 continue
             self._interrupted.clear()
-            yield ServerMessage.transcript(transcript)
-            async for message in self._answer(transcript):
+            yield ServerMessage.transcript(heard.text)
+            async for message in self._answer(heard.text):
                 yield message
 
     async def _answer(self, transcript: str) -> AsyncIterator[ServerMessage]:

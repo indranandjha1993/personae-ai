@@ -134,6 +134,10 @@ class ServerMessage(_Message):
         return TranscriptMessage(type="transcript", text=text)
 
     @staticmethod
+    def hearing(text: str) -> "HearingMessage":
+        return HearingMessage(type="hearing", text=text)
+
+    @staticmethod
     def speaking(text: str) -> "SpeakingMessage":
         return SpeakingMessage(type="speaking", text=text)
 
@@ -172,6 +176,17 @@ class ReadyMessage(ServerMessage):
 
 class TranscriptMessage(ServerMessage):
     type: Literal["transcript"]
+    text: str
+
+
+class HearingMessage(ServerMessage):
+    """What the listener is saying, while they are still saying it.
+
+    Provisional and superseded by the next one, so it is shown but never
+    acted on.
+    """
+
+    type: Literal["hearing"]
     text: str
 
 

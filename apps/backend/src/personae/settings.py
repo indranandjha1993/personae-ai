@@ -65,7 +65,7 @@ class Settings(BaseSettings):
 
     # Flux turn detection. A higher threshold clips fewer words off the end of
     # a sentence but waits longer before answering.
-    eot_threshold: Annotated[float, Field(ge=0.5, le=1.0)] = 0.7
+    eot_threshold: Annotated[float, Field(ge=0.5, le=1.0)] = 0.8
     eot_timeout_ms: Annotated[int, Field(ge=500, le=60_000)] = 5_000
     llm_base_url: str | None = None
     llm_api_key: str | None = None

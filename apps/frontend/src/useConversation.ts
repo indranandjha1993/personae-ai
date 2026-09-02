@@ -130,6 +130,11 @@ export function useConversation(characterId: string): Conversation {
     const session = openSession(characterId, {
       onMessage: (message) => {
         switch (message.type) {
+          case 'hearing':
+            // Provisional: the listener watching themselves be heard. It is
+            // replaced by the next one and never acted on.
+            setTranscript(message.text)
+            break
           case 'transcript':
             suppressing.current = false
             setTranscript(message.text)
