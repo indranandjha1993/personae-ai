@@ -103,3 +103,20 @@ async def test_vision_can_use_a_different_model(captured: list[dict[str, object]
     async for _ in llm.respond("You are C.", "what is this?", image=b"\xff\xd8jpeg"):
         pass
     assert captured[1]["model"] == "vision-model"
+
+
+async def test_the_character_is_marked_cacheable(captured: list[dict[str, object]]) -> None:
+    """Her character is over a thousand tokens and identical every turn.
+
+    Prefill dominates the wait before she starts speaking, so it is sent in
+    the cacheable form. An endpoint that does not understand the annotation
+    ignores it, so there is no cost to sending it always.
+    """
+    llm = AnthropicCompatibleLlm("http://x/v1", "k", "haiku")
+    async for _ in llm.respond("you are Wren", "hello"):
+        pass
+
+    system = captured[0]["system"]
+    assert isinstance(system, list)
+    assert system[0]["text"] == "you are Wren"
+    assert system[0]["cache_control"] == {"type": "ephemeral"}

@@ -63,7 +63,17 @@ class AnthropicCompatibleLlm:
             "model": self._vision_model if image is not None else self._model,
             "max_tokens": MAX_TOKENS,
             "stream": True,
-            "system": system_prompt,
+            # Her character runs to well over a thousand tokens and is
+            # identical on every turn, so it is marked cacheable: prefill
+            # dominates the wait before she starts speaking. An endpoint that
+            # does not understand the annotation ignores it.
+            "system": [
+                {
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
             "messages": [*history, {"role": "user", "content": content}],
         }
         headers = {
