@@ -48,7 +48,7 @@ holding paid credentials cannot really be contributed to.
 | Layer | Choice |
 |---|---|
 | Backend | Python 3.13, FastAPI, WebSockets, `uv` |
-| Speech | Deepgram streaming STT + TTS (async SDK) |
+| Speech | Deepgram Flux streaming STT + TTS (async SDK) |
 | Language model | Any OpenAI-compatible endpoint |
 | Frontend | React 19, TypeScript, Vite |
 | Audio | Web Audio API — AudioWorklet capture, clock-scheduled playback |
@@ -138,16 +138,20 @@ loopback and the container cannot see it. Smaller models answer noticeably
 faster, which matters more here than it would in a chat window: every second
 before the first word is a second of silence in a conversation.
 
-She can speak a language other than English: Deepgram transcribes over a
-hundred and forty and synthesises seven, so set `PERSONAE_STT_LANGUAGE` and a
-matching voice. Not every language runs on every model -- Spanish and French
-need `nova-2` where German and Japanese work on `nova-3` -- and a pairing that
-would fail is refused at startup rather than at the socket. See `.env.example`.
+Speech runs on Flux, Deepgram's voice-agent line: it judges when a turn has
+ended from the words themselves rather than from a fixed silence, which is both
+quicker and harder to fool than timing a pause. `PERSONAE_EOT_THRESHOLD` is the
+one worth tuning — raise it and she waits longer but clips fewer words off the
+end of your sentence.
 
-The speech model, fallback voice, and turn-taking timings are configurable too — see
-`.env.example`. `PERSONAE_ENDPOINTING_MS` is the one worth tuning: it sets how long she
-waits through a pause before deciding you have finished speaking. A character pack that
-names its own voice overrides `PERSONAE_TTS_VOICE`.
+Flux speaks English only. For anything else set `PERSONAE_STT_LANGUAGE` with a
+`nova` model and a matching `aura-2` voice: Deepgram transcribes over a hundred
+and forty languages and synthesises seven, though not all on every model —
+Spanish and French need `nova-2` where German and Japanese work on `nova-3`. A
+pairing that would fail is refused at startup rather than at the socket, and so
+is a `flux` voice asked to speak something other than English. See
+`.env.example`. A character pack that names its own voice overrides
+`PERSONAE_TTS_VOICE`.
 
 ## Running under Docker
 
@@ -222,7 +226,7 @@ this one that is not passing `Upgrade` and `Connection` headers.
 
 ## Live conversation
 
-The microphone stays open. Deepgram decides when you have stopped speaking, so nothing is
+The microphone stays open. The model decides when you have stopped speaking, so nothing is
 held down, and talking over a reply cuts it short — input counts as speech only while she is
 actually speaking and only when it is clearly louder than what is playing, so the reply
 leaking back through the microphone does not interrupt her.

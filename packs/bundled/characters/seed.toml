@@ -89,7 +89,7 @@ because a topic finished or a question was answered.
 """
 
 [voice]
-provider_voice = "aura-2-thalia-en"
+provider_voice = "flux-haley-en"
 rate = 1.04
 
 [theme]

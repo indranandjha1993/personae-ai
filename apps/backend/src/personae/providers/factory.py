@@ -17,6 +17,19 @@ def build_stt(settings: Settings) -> SttProvider:
     """
     if not settings.deepgram_api_key:
         return MockStt()
+
+    # Flux is a different endpoint with its own turn detection, so the model
+    # name picks the client rather than being passed to a common one.
+    if settings.stt_model.startswith("flux-"):
+        from personae.providers.flux import FluxStt
+
+        return FluxStt(
+            api_key=_require(settings.deepgram_api_key, "DEEPGRAM_API_KEY"),
+            model=settings.stt_model,
+            eot_threshold=settings.eot_threshold,
+            eot_timeout_ms=settings.eot_timeout_ms,
+        )
+
     from personae.providers.deepgram import DeepgramStt
 
     return DeepgramStt(
@@ -31,6 +44,15 @@ def build_stt(settings: Settings) -> SttProvider:
 def build_tts(settings: Settings) -> TtsProvider:
     if not settings.deepgram_api_key:
         return MockTts()
+
+    if settings.tts_voice.startswith("flux-"):
+        from personae.providers.flux import FluxTts
+
+        return FluxTts(
+            api_key=_require(settings.deepgram_api_key, "DEEPGRAM_API_KEY"),
+            voice=settings.tts_voice,
+        )
+
     from personae.providers.deepgram import DeepgramTts
 
     return DeepgramTts(

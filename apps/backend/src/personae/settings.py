@@ -50,17 +50,23 @@ class Settings(BaseSettings):
 
     # Speech model and voice. A character pack may name its own voice, in which
     # case this is only the fallback.
-    stt_model: str = "nova-3"
+    stt_model: str = "flux-general-en"
     # Deepgram transcribes well over a hundred languages, but not every one on
     # every model: Spanish and French need nova-2, where German and Japanese
     # work on nova-3.
     stt_language: str = "en"
-    tts_voice: str = "aura-2-thalia-en"
+    tts_voice: str = "flux-haley-en"
 
     # Silence, in milliseconds, before a turn is treated as finished. Short
-    # values feel responsive but cut people off mid-thought.
-    endpointing_ms: Annotated[int, Field(gt=0, le=10_000)] = 800
+    # values feel responsive but cut people off mid-thought. Used by the nova
+    # models; Flux detects the end of a turn itself.
+    endpointing_ms: Annotated[int, Field(gt=0, le=10_000)] = 300
     utterance_end_ms: Annotated[int, Field(gt=0, le=10_000)] = 1000
+
+    # Flux turn detection. A higher threshold clips fewer words off the end of
+    # a sentence but waits longer before answering.
+    eot_threshold: Annotated[float, Field(ge=0.5, le=1.0)] = 0.7
+    eot_timeout_ms: Annotated[int, Field(ge=500, le=60_000)] = 5_000
     llm_base_url: str | None = None
     llm_api_key: str | None = None
     llm_model: str = "gpt-4o-mini"
@@ -83,5 +89,12 @@ class Settings(BaseSettings):
         if self.stt_model.startswith("nova-3") and self.stt_language in _NOVA_2_ONLY:
             raise ValueError(
                 f"PERSONAE_STT_LANGUAGE={self.stt_language} needs PERSONAE_STT_MODEL=nova-2"
+            )
+        # The Flux voices are English-only. Asking for another language would
+        # otherwise be honoured silently by reading it in an English accent.
+        if self.tts_voice.startswith("flux-") and self.stt_language != "en":
+            raise ValueError(
+                f"PERSONAE_STT_LANGUAGE={self.stt_language} needs an aura-2 voice; "
+                "the flux voices speak English only"
             )
         return self
