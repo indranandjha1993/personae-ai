@@ -15,10 +15,14 @@ export interface SessionHandlers {
 
 export interface Session {
   sendAudio: (frame: Int16Array) => void
+  sendFrame: (jpeg: Blob) => Promise<void>
   stopSpeaking: () => void
   interrupt: () => void
   close: () => void
 }
+
+/** About a second of audio; beyond this the uplink is not keeping up. */
+const MAX_BUFFERED_BYTES = 64_000
 
 function toBase64(frame: Int16Array): string {
   const bytes = new Uint8Array(frame.buffer, frame.byteOffset, frame.byteLength)
@@ -30,13 +34,8 @@ function toBase64(frame: Int16Array): string {
   return btoa(binary)
 }
 
-export function openSession(
-  characterId: string,
-  handlers: SessionHandlers,
-  mode: 'turn' | 'live' = 'turn',
-): Session {
-  const path = mode === 'live' ? 'ws/live' : 'ws/session'
-  const url = new URL(`/${path}/${characterId}`, window.location.href)
+export function openSession(characterId: string, handlers: SessionHandlers): Session {
+  const url = new URL(`/ws/live/${characterId}`, window.location.href)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   const socket = new WebSocket(url)
 
@@ -59,14 +58,41 @@ export function openSession(
   socket.onclose = (event) => { handlers.onClose?.(event) }
   socket.onerror = () => { handlers.onError?.('connection failed') }
 
+  // Roughly two seconds of audio. Capture starts before the handshake
+  // finishes, so without this the first word of the conversation is lost.
+  const MAX_PENDING = 20
+  let pending: string[] = []
+
+  socket.addEventListener('open', () => {
+    for (const payload of pending) socket.send(payload)
+    pending = []
+  })
+
   const sendWhenOpen = (payload: object) => {
-    if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(payload))
+    const encoded = JSON.stringify(payload)
+    if (socket.readyState === WebSocket.OPEN) {
+      // Drop rather than queue without bound if the uplink has stalled.
+      if (socket.bufferedAmount > MAX_BUFFERED_BYTES) return
+      socket.send(encoded)
+      return
+    }
+    if (socket.readyState === WebSocket.CONNECTING && pending.length < MAX_PENDING) {
+      pending.push(encoded)
+    }
   }
 
   return {
     sendAudio: (frame) => { sendWhenOpen({ type: 'audio', pcm: toBase64(frame) }) },
     stopSpeaking: () => { sendWhenOpen({ type: 'stop' }) },
     interrupt: () => { sendWhenOpen({ type: 'interrupt' }) },
+    sendFrame: async (jpeg) => {
+      const bytes = new Uint8Array(await jpeg.arrayBuffer())
+      let binary = ''
+      for (let i = 0; i < bytes.length; i += 0x8000) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+      }
+      sendWhenOpen({ type: 'vision', jpeg: btoa(binary) })
+    },
     close: () => { socket.close() },
   }
 }

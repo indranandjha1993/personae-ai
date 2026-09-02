@@ -11,15 +11,18 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { BargeInDetector, frameLevel } from './audio/barge-in'
 import { startCapture, type Capture } from './audio/capture'
 import { PcmPlayer } from './audio/playback'
+import { startCamera, type Camera } from './camera'
 import { decodePcm, DEFAULT_SAMPLE_RATE } from './protocol'
 import { openSession, type Session } from './session'
 
 export type Status = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error'
 
-export type Mode = 'turn' | 'live'
-
 export interface Conversation {
   status: Status
+  /** The camera stream, for a self-view, or null when the camera is off. */
+  cameraStream: MediaStream | null
+  cameraOn: boolean
+  toggleCamera: () => void
   /** Current playback loudness, read per animation frame rather than as state. */
   loudness: () => number
   transcript: string
@@ -31,7 +34,7 @@ export interface Conversation {
   stop: () => void
 }
 
-export function useConversation(characterId: string, mode: Mode = 'turn'): Conversation {
+export function useConversation(characterId: string): Conversation {
   const [status, setStatus] = useState<Status>('idle')
   const [transcript, setTranscript] = useState('')
   const [reply, setReply] = useState('')
@@ -44,14 +47,27 @@ export function useConversation(characterId: string, mode: Mode = 'turn'): Conve
   const playerRef = useRef<PcmPlayer | null>(null)
   const contextRef = useRef<AudioContext | null>(null)
   const bargeInRef = useRef(new BargeInDetector())
+  const cameraRef = useRef<Camera | null>(null)
+  const pendingFrame = useRef(false)
+  const startingRef = useRef(false)
+  const generationRef = useRef(0)
+  const spokenRef = useRef(false)
+  const frameSentRef = useRef(false)
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
 
   const teardown = useCallback(() => {
+    generationRef.current += 1
+    startingRef.current = false
+    spokenRef.current = false
     captureRef.current?.stop()
     captureRef.current = null
     sessionRef.current?.close()
     sessionRef.current = null
     playerRef.current?.stop()
     playerRef.current = null
+    cameraRef.current?.stop()
+    cameraRef.current = null
+    setCameraStream(null)
     // Browsers cap concurrent AudioContexts, so an unclosed one per turn
     // eventually refuses to start.
     void contextRef.current?.close()
@@ -62,7 +78,12 @@ export function useConversation(characterId: string, mode: Mode = 'turn'): Conve
   useEffect(() => teardown, [teardown])
 
   const start = useCallback(() => {
-    if (captureRef.current !== null) return
+    // Guards the whole async start, not just the resolved capture: the refs
+    // stay null until getUserMedia resolves, so a second click would otherwise
+    // open a second microphone that nothing can stop.
+    if (startingRef.current) return
+    startingRef.current = true
+    const generation = ++generationRef.current
     setTranscript('')
     setReply('')
     setDetail('')
@@ -81,6 +102,10 @@ export function useConversation(characterId: string, mode: Mode = 'turn'): Conve
         switch (message.type) {
           case 'transcript':
             setTranscript(message.text)
+            // A new turn: whatever was cut off before is finished with, and
+            // the next utterance gets a fresh still.
+            bargeInRef.current.reset()
+            frameSentRef.current = false
             setStatus('thinking')
             break
           case 'reply':
@@ -95,6 +120,7 @@ export function useConversation(characterId: string, mode: Mode = 'turn'): Conve
             playerRef.current = player
             break
           case 'audio':
+            spokenRef.current = true
             setStatus('speaking')
             if (!player) {
               player = new PcmPlayer(context, DEFAULT_SAMPLE_RATE)
@@ -105,54 +131,119 @@ export function useConversation(characterId: string, mode: Mode = 'turn'): Conve
           case 'interrupted':
             // She stopped because we spoke over her; go straight back to
             // listening rather than reporting an error.
+            playerRef.current?.stop()
+            spokenRef.current = false
             setStatus('listening')
             break
           case 'error':
             setDetail(message.detail)
+            teardown()
             setStatus('error')
             break
           case 'done':
+            teardown()
             setStatus('idle')
             break
         }
       },
       onError: (message) => {
         setDetail(message)
+        teardown()
         setStatus('error')
       },
-    }, mode)
+      onClose: (event) => {
+        // A clean close is the end of the conversation; anything else is a
+        // connection that died under us and must be surfaced.
+        if (!event.wasClean) setDetail('Connection lost.')
+        teardown()
+        setStatus(event.wasClean ? 'idle' : 'error')
+      },
+    })
     sessionRef.current = session
+
+    const stale = () => generationRef.current !== generation
 
     startCapture((frame) => {
       session.sendAudio(frame)
-      // In live mode the microphone stays open while she talks, so speaking
-      // over her has to cut the reply short.
-      if (mode === 'live' && playerRef.current) {
-        const speaking = playerRef.current.currentLoudness()
+      // One still per utterance. Ungated this ran on every audio frame, which
+      // is ten JPEG uploads a second and continuous vision-token spend.
+      if (cameraRef.current && !pendingFrame.current && !frameSentRef.current) {
+        frameSentRef.current = true
+        pendingFrame.current = true
+        void cameraRef.current
+          .grab()
+          .then((frame) => (frame ? session.sendFrame(frame) : undefined))
+          .finally(() => { pendingFrame.current = false })
+      }
+
+      // Only while she is actually speaking. Ungated, the threshold collapses
+      // to the noise floor between replies and every ordinary utterance would
+      // fire an interrupt.
+      const player = playerRef.current
+      if (spokenRef.current && player) {
+        const speaking = player.currentLoudness()
         if (bargeInRef.current.observe(frameLevel(frame), speaking)) {
-          playerRef.current.stop()
+          spokenRef.current = false
+          bargeInRef.current.reset()
+          player.stop()
           session.interrupt()
           setStatus('listening')
         }
       }
     })
-      .then((capture) => { captureRef.current = capture })
+      .then((capture) => {
+        if (stale()) {
+          capture.stop()
+          return
+        }
+        captureRef.current = capture
+      })
       .catch((error: unknown) => {
         setDetail(error instanceof Error ? error.message : 'microphone unavailable')
+        teardown()
         setStatus('error')
       })
-  }, [characterId, mode])
+      .finally(() => { startingRef.current = false })
+  }, [characterId, teardown])
+
+  const toggleCamera = useCallback(() => {
+    if (cameraRef.current) {
+      cameraRef.current.stop()
+      cameraRef.current = null
+      setCameraStream(null)
+      return
+    }
+    startCamera()
+      .then((camera) => {
+        cameraRef.current = camera
+        setCameraStream(camera.stream)
+      })
+      .catch(() => { setDetail('Could not open the camera.') })
+  }, [])
 
   const stop = useCallback(() => {
-    captureRef.current?.stop()
-    captureRef.current = null
-    sessionRef.current?.stopSpeaking()
-    setStatus((current) => (current === 'listening' ? 'thinking' : current))
-  }, [])
+    // There is no end of turn to signal in a live conversation: the button
+    // ends the whole exchange, so everything is released and she falls silent.
+    teardown()
+    setStatus('idle')
+  }, [teardown])
 
   // A function rather than a value: loudness changes every frame, and putting
   // it in state would re-render the whole tree 60 times a second.
   const loudness = useCallback(() => playerRef.current?.currentLoudness() ?? 0, [])
 
-  return { status, transcript, reply, gesture, emotion, detail, loudness, start, stop }
+  return {
+    status,
+    transcript,
+    reply,
+    gesture,
+    emotion,
+    detail,
+    loudness,
+    cameraStream,
+    cameraOn: cameraStream !== null,
+    toggleCamera,
+    start,
+    stop,
+  }
 }
