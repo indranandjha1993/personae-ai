@@ -18,23 +18,27 @@ logger = logging.getLogger(__name__)
 
 STT_SAMPLE_RATE = 16_000
 
-# Silence after speech before Deepgram closes a turn. Long enough to survive a
-# thinking pause, short enough that a reply does not feel delayed.
-ENDPOINTING_MS = 800
-UTTERANCE_END_MS = 1000
 TTS_SAMPLE_RATE = PLAYBACK_SAMPLE_RATE
 
 
 class DeepgramStt:
     """Streaming transcription over a live websocket."""
 
-    def __init__(self, api_key: str, model: str = "nova-3") -> None:
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "nova-3",
+        endpointing_ms: int = 800,
+        utterance_end_ms: int = 1000,
+    ) -> None:
         self._client = AsyncDeepgramClient(api_key=api_key)
-        self._model = model
+        self.model = model
+        self._endpointing_ms = endpointing_ms
+        self._utterance_end_ms = utterance_end_ms
 
     async def transcribe(self, audio: AsyncIterator[bytes]) -> AsyncIterator[str]:
         async with self._client.listen.v1.connect(
-            model=self._model,
+            model=self.model,
             encoding="linear16",
             sample_rate=STT_SAMPLE_RATE,
             channels=1,
@@ -43,8 +47,8 @@ class DeepgramStt:
             # needs no push-to-talk. Interim results arrive first and are
             # discarded; only finalised transcripts are yielded.
             interim_results=True,
-            endpointing=ENDPOINTING_MS,
-            utterance_end_ms=UTTERANCE_END_MS,
+            endpointing=self._endpointing_ms,
+            utterance_end_ms=self._utterance_end_ms,
             vad_events=True,
         ) as connection:
             pump = asyncio.create_task(self._pump(connection, audio))
@@ -72,15 +76,19 @@ class DeepgramStt:
 class DeepgramTts:
     """Streaming speech synthesis."""
 
-    def __init__(self, api_key: str, model: str = "aura-2-asteria-en") -> None:
+    def __init__(self, api_key: str, voice: str = "aura-2-thalia-en") -> None:
         self._client = AsyncDeepgramClient(api_key=api_key)
-        self._model = model
+        self._voice = voice
+
+    def voice_for(self, requested: str) -> str:
+        """A character's own voice wins; the configured one fills the gap."""
+        return requested or self._voice
 
     async def synthesize(self, text: str, voice: str, rate: float = 1.0) -> AsyncIterator[bytes]:
         # A character's configured voice wins; the constructor default is only
         # a fallback for packs that do not name one.
         async with self._client.speak.v1.connect(
-            model=voice or self._model,
+            model=self.voice_for(voice),
             encoding="linear16",
             sample_rate=TTS_SAMPLE_RATE,
             speed=rate,

@@ -123,6 +123,11 @@ Modes are independent, so you can run live speech against a mock language model,
 reverse. A missing credential fails at startup naming the variable, rather than surfacing on
 someone's first utterance.
 
+The speech model, fallback voice, and turn-taking timings are configurable too — see
+`.env.example`. `PERSONAE_ENDPOINTING_MS` is the one worth tuning: it sets how long she
+waits through a pause before deciding you have finished speaking. A character pack that
+names its own voice overrides `PERSONAE_TTS_VOICE`.
+
 ### Docker
 
 ```bash

@@ -14,7 +14,12 @@ def build_stt(settings: Settings) -> SttProvider:
         return MockStt()
     from personae.providers.deepgram import DeepgramStt
 
-    return DeepgramStt(api_key=_require(settings.deepgram_api_key, "DEEPGRAM_API_KEY"))
+    return DeepgramStt(
+        api_key=_require(settings.deepgram_api_key, "DEEPGRAM_API_KEY"),
+        model=settings.stt_model,
+        endpointing_ms=settings.endpointing_ms,
+        utterance_end_ms=settings.utterance_end_ms,
+    )
 
 
 def build_tts(settings: Settings) -> TtsProvider:
@@ -22,7 +27,10 @@ def build_tts(settings: Settings) -> TtsProvider:
         return MockTts()
     from personae.providers.deepgram import DeepgramTts
 
-    return DeepgramTts(api_key=_require(settings.deepgram_api_key, "DEEPGRAM_API_KEY"))
+    return DeepgramTts(
+        api_key=_require(settings.deepgram_api_key, "DEEPGRAM_API_KEY"),
+        voice=settings.tts_voice,
+    )
 
 
 def build_llm(settings: Settings) -> LlmProvider:

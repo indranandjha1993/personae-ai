@@ -1,8 +1,9 @@
 """Typed application configuration, loaded from the environment."""
 
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ProviderMode = Literal["mock", "live"]
@@ -44,6 +45,16 @@ class Settings(BaseSettings):
     tts_mode: ProviderMode = "mock"
 
     deepgram_api_key: str | None = None
+
+    # Speech model and voice. A character pack may name its own voice, in which
+    # case this is only the fallback.
+    stt_model: str = "nova-3"
+    tts_voice: str = "aura-2-thalia-en"
+
+    # Silence, in milliseconds, before a turn is treated as finished. Short
+    # values feel responsive but cut people off mid-thought.
+    endpointing_ms: Annotated[int, Field(gt=0, le=10_000)] = 800
+    utterance_end_ms: Annotated[int, Field(gt=0, le=10_000)] = 1000
     llm_base_url: str | None = None
     llm_api_key: str | None = None
     llm_model: str = "gpt-4o-mini"
