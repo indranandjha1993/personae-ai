@@ -9,7 +9,7 @@ from personae import expression
 from personae.conversation import History, Turn
 from personae.packs.models import Character
 from personae.protocol import ServerMessage
-from personae.providers.base import LlmProvider, SttProvider, TtsProvider
+from personae.providers.base import LlmProvider, ProviderError, SttProvider, TtsProvider
 from personae.sentences import SentenceBuffer
 from personae.speech import farewell_marked, for_speech, strip_farewell
 
@@ -183,6 +183,12 @@ class LiveSession:
                     await outbound.put(ServerMessage.farewell())
             except asyncio.CancelledError:
                 raise
+            except ProviderError as error:
+                # The provider said why it refused; an expired credential or a
+                # rejected request is worth repeating rather than hiding behind
+                # a generic failure the listener can do nothing about.
+                logger.warning("the model refused the turn: %s", error)
+                await outbound.put(ServerMessage.error(str(error)))
             except Exception:
                 # One upstream hiccup ends a turn, not the conversation.
                 logger.exception("provider failed during reply")

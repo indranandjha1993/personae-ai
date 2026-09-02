@@ -12,6 +12,7 @@ from collections.abc import AsyncIterator, Sequence
 import httpx
 
 from personae.conversation import Message
+from personae.providers.base import ProviderError
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +82,15 @@ def _fragment_of(line: str) -> str:
     except json.JSONDecodeError:
         logger.warning("discarding malformed stream frame")
         return ""
-    choices = parsed.get("choices") if isinstance(parsed, dict) else None
+    if not isinstance(parsed, dict):
+        return ""
+    # A failure reported mid-stream would otherwise be indistinguishable from
+    # a reply that simply had nothing in it.
+    if "error" in parsed:
+        detail = parsed["error"]
+        message = detail.get("message") if isinstance(detail, dict) else str(detail)
+        raise ProviderError(message or "the model reported an error")
+    choices = parsed.get("choices")
     if not choices:
         return ""
     delta = choices[0].get("delta") if isinstance(choices[0], dict) else None

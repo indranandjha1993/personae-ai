@@ -12,6 +12,7 @@ from collections.abc import AsyncIterator, Sequence
 import httpx
 
 from personae.conversation import Message
+from personae.providers.base import ProviderError
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +104,16 @@ def _fragment_of(line: str) -> str:
     except json.JSONDecodeError:
         logger.warning("discarding malformed stream frame")
         return ""
-    if not isinstance(parsed, dict) or parsed.get("type") != "content_block_delta":
+    if not isinstance(parsed, dict):
+        return ""
+    # An endpoint that reports a failure mid-stream would otherwise look like a
+    # reply with nothing in it, which reaches the listener as a long silence
+    # rather than as the error it is.
+    if parsed.get("type") == "error":
+        detail = parsed.get("error")
+        message = detail.get("message") if isinstance(detail, dict) else None
+        raise ProviderError(message or "the model reported an error")
+    if parsed.get("type") != "content_block_delta":
         return ""
     delta = parsed.get("delta")
     text = delta.get("text") if isinstance(delta, dict) else None

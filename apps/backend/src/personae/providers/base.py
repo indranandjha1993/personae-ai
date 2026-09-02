@@ -11,6 +11,14 @@ from typing import Protocol, runtime_checkable
 from personae.conversation import Message
 
 
+class ProviderError(RuntimeError):
+    """An upstream provider reported a failure.
+
+    Distinct from a transport error: the request arrived and was refused, so
+    the message is worth showing rather than retrying blindly.
+    """
+
+
 @runtime_checkable
 class SttProvider(Protocol):
     """Streaming speech-to-text."""
