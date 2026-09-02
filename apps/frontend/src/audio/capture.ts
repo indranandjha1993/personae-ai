@@ -12,6 +12,8 @@ const WORKLET_URL = '/pcm-capture.worklet.js'
 
 export interface Capture {
   stop: () => void
+  /** The rate capture actually runs at, which may not be the one requested. */
+  sampleRate: number
 }
 
 /**
@@ -50,6 +52,7 @@ export async function startCapture(onFrame: (frame: Int16Array) => void): Promis
 
   let stopped = false
   return {
+    sampleRate: context.sampleRate,
     stop: () => {
       if (stopped) return
       stopped = true

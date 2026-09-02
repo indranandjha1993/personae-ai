@@ -22,7 +22,16 @@ export interface Session {
 }
 
 /** About a second of audio; beyond this the uplink is not keeping up. */
-const MAX_BUFFERED_BYTES = 64_000
+/**
+ * How much unsent audio may pile up before frames start being discarded.
+ *
+ * A dropped frame is a hole punched in the middle of a sentence: the words in
+ * it are never transcribed, and the silence it leaves can read to the
+ * recogniser as the speaker having finished. 64KB is only about a second and a
+ * half of speech, which a brief stall on a slow uplink passes easily, so this
+ * is generous enough that only a genuinely broken connection reaches it.
+ */
+const MAX_BUFFERED_BYTES = 512_000
 
 function toBase64(frame: Int16Array): string {
   const bytes = new Uint8Array(frame.buffer, frame.byteOffset, frame.byteLength)
@@ -71,7 +80,10 @@ export function openSession(characterId: string, handlers: SessionHandlers): Ses
   const sendWhenOpen = (payload: object) => {
     const encoded = JSON.stringify(payload)
     if (socket.readyState === WebSocket.OPEN) {
-      // Drop rather than queue without bound if the uplink has stalled.
+      // Drop rather than queue without bound if the uplink has stalled. Not
+      // reported as an error: a conversation that survives a hiccup is better
+      // than one torn down over it, and the cap is high enough that reaching
+      // it means the connection is already failing on its own.
       if (socket.bufferedAmount > MAX_BUFFERED_BYTES) return
       socket.send(encoded)
       return
