@@ -119,6 +119,25 @@ back to a stand-in when it is not, so you can run real speech against a stand-in
 the reverse, without setting anything else. A key with no endpoint fails at startup naming
 what is missing, rather than quietly falling back.
 
+A model running on your own machine works as well as a hosted one -- LM Studio,
+Ollama and llama.cpp all speak the OpenAI wire. Point `PERSONAE_LLM_BASE_URL` at
+it and give any value for the key, since the app treats an empty key as "no
+model configured" while local servers rarely check it.
+
+Under Docker, `localhost` inside the container is the container, so the host is
+reached by name instead:
+
+```bash
+PERSONAE_LLM_BASE_URL=http://host.docker.internal:1234/v1   # LM Studio
+PERSONAE_LLM_API_KEY=local
+PERSONAE_LLM_MODEL=nvidia/nemotron-3-nano-4b
+```
+
+LM Studio must also have "Serve on Local Network" enabled, or it binds to
+loopback and the container cannot see it. Smaller models answer noticeably
+faster, which matters more here than it would in a chat window: every second
+before the first word is a second of silence in a conversation.
+
 She can speak a language other than English: Deepgram transcribes over a
 hundred and forty and synthesises seven, so set `PERSONAE_STT_LANGUAGE` and a
 matching voice. Not every language runs on every model -- Spanish and French

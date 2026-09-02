@@ -13,6 +13,10 @@ services:
     restart: unless-stopped
     expose:
       - "8000"
+    # So a model server running on the host is reachable as
+    # host.docker.internal: inside the container, localhost is the container.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   frontend:
     build:
