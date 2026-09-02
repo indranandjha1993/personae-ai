@@ -149,20 +149,76 @@ The speech model, fallback voice, and turn-taking timings are configurable too �
 waits through a pause before deciding you have finished speaking. A character pack that
 names its own voice overrides `PERSONAE_TTS_VOICE`.
 
-### Docker
+## Running under Docker
 
 ```bash
 cp .env.example .env      # optional; it runs without keys
 docker compose up -d --build
 ```
 
-Then open <http://localhost:47465>. One port is published: the frontend serves
-the app and proxies the conversation through to the backend, which is not
-reachable from outside the compose network. Set `PERSONAE_PORT` to publish
-somewhere else.
+Then open <http://localhost:47465>.
 
-Both containers restart unless you stop them, so the stack survives a crash or
-a reboot. `docker compose down` stops it.
+### What comes up
+
+Two containers. The **frontend** serves the built app through nginx and proxies
+the conversation to the **backend**, which stays inside the compose network and
+is never published. One port reaches everything, and the API and websocket are
+same-origin, so there is no CORS to configure.
+
+| | |
+|---|---|
+| Published port | `47465`, or whatever `PERSONAE_PORT` is set to |
+| Restart policy | `unless-stopped` — survives a crash or a reboot |
+| Health checks | Both containers; compose waits for the backend before starting the frontend |
+| Credentials | `.env` is read at run time and never baked into an image |
+
+### Everyday commands
+
+```bash
+docker compose ps                  # what is running, and whether it is healthy
+docker compose logs -f backend     # follow the conversation logs
+docker compose restart backend     # after changing .env
+docker compose up -d --build       # after changing code
+docker compose down                # stop everything
+```
+
+Changing `.env` needs a restart rather than a rebuild: it is mounted, not
+copied. Changing code needs a rebuild.
+
+### Publishing elsewhere
+
+```bash
+PERSONAE_PORT=8080 docker compose up -d
+```
+
+### Talking to a model on your own machine
+
+Inside a container `localhost` is the container, so a model server running on
+your machine is reached by name instead. The compose file maps
+`host.docker.internal` to the host for exactly this:
+
+```bash
+PERSONAE_LLM_BASE_URL=http://host.docker.internal:1234/v1   # LM Studio
+PERSONAE_LLM_API_KEY=local
+PERSONAE_LLM_MODEL=nvidia/nemotron-3-nano-4b
+```
+
+LM Studio also needs "Serve on Local Network" enabled, or it binds to loopback
+and the container cannot see it. Note that vision needs the Anthropic wire, so
+the camera goes quiet against an OpenAI-compatible local server; voice is
+unaffected.
+
+### If something is wrong
+
+**The page loads but she never answers.** Check the backend is healthy with
+`docker compose ps`, then `docker compose logs backend` — a missing or wrong
+credential is reported at startup, naming the variable.
+
+**The websocket closes as soon as it opens.** Almost always a proxy in front of
+this one that is not passing `Upgrade` and `Connection` headers.
+
+**Changes to `.env` did nothing.** It is read when the container starts:
+`docker compose restart backend`.
 
 ## Live conversation
 
