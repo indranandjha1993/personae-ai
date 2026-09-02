@@ -24,16 +24,29 @@ class FakeContext {
     } as unknown as AudioBuffer
   }
 
+  readonly ended: (() => void)[] = []
+
+  endAll() {
+    for (const end of this.ended) end()
+    this.ended.length = 0
+  }
+
   createBufferSource() {
     const starts = this.starts
-    return {
+    const ended = this.ended
+    const node = {
       buffer: null,
+      onended: null as (() => void) | null,
       connect: vi.fn(),
       start(when: number) {
         starts.push(when)
       },
       stop: vi.fn(),
-    } as unknown as AudioBufferSourceNode
+    }
+    // The graph calls this when the buffer finishes; the player uses it to
+    // forget the source.
+    ended.push(() => node.onended?.())
+    return node as unknown as AudioBufferSourceNode
   }
 }
 
@@ -80,6 +93,29 @@ describe('PcmPlayer', () => {
     player.enqueue(new Int16Array(2400))
     const [first = 0, second = 0] = context.starts
     expect(second - first).toBeCloseTo(0.1, 5)
+  })
+
+  it('reports finished after the sources end and the timeline passes', () => {
+    // The real graph fires onended, which is what empties the source set.
+    const player = new PcmPlayer(context as unknown as AudioContext, 24_000)
+    player.enqueue(new Int16Array(2400))
+    context.endAll()
+    expect(player.isFinished()).toBe(false)  // scheduled ahead; not heard yet
+    context.currentTime = 99
+    expect(player.isFinished()).toBe(true)
+  })
+
+  it('is finished only once the scheduled audio has actually played', () => {
+    // Silence is not the signal: the player is quiet before the first chunk
+    // sounds and again between sentences.
+    const player = new PcmPlayer(context as unknown as AudioContext, 24_000)
+    expect(player.isFinished()).toBe(true)
+
+    player.enqueue(new Int16Array(2400))
+    expect(player.isFinished()).toBe(false)
+
+    context.currentTime = 99
+    expect(player.isFinished()).toBe(false)
   })
 
   it('converts 16-bit samples to normalised floats', () => {

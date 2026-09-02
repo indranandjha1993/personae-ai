@@ -254,16 +254,14 @@ export function useConversation(characterId: string): Conversation {
   // it in state would re-render the whole tree 60 times a second.
   const loudness = useCallback(() => playerRef.current?.currentLoudness() ?? 0, [])
 
-  // Her audio is scheduled ahead of real time, so the last chunk arrives well
-  // before it is heard. Watching for the playback to fall quiet is what tells
-  // us she has actually finished the sentence.
+  // The player knows when its own queue has drained. Loudness cannot tell us:
+  // audio is scheduled ahead of real time, so it is silent before the first
+  // chunk sounds and again between sentences.
   useEffect(() => {
     if (status !== 'speaking') return
     const timer = window.setInterval(() => {
-      if (playerRef.current && playerRef.current.currentLoudness() < 0.004) {
-        setReplySpoken(true)
-      }
-    }, 150)
+      if (playerRef.current?.isFinished() === true) setReplySpoken(true)
+    }, 120)
     return () => { window.clearInterval(timer) }
   }, [status])
 

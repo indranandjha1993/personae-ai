@@ -90,6 +90,17 @@ export class PcmPlayer {
     ])
   }
 
+  /**
+   * True once everything scheduled has finished playing.
+   *
+   * Loudness cannot answer this: audio is scheduled ahead of real time, so the
+   * player is silent for a moment before the first chunk sounds, and silent
+   * again in the gap between sentences.
+   */
+  isFinished(): boolean {
+    return this.sources.size === 0 && this.nextStartTime <= this.context.currentTime
+  }
+
   /** Root-mean-square loudness of what is playing right now, 0 when silent. */
   currentLoudness(): number {
     if (!this.analyser) return 0
