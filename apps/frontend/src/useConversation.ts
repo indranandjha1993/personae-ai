@@ -22,6 +22,8 @@ const FAREWELL_GRACE_MS = 1200
 
 export interface Conversation {
   status: Status
+  /** True once she has finished speaking the current reply. */
+  replySpoken: boolean
   /** The camera stream, for a self-view, or null when the camera is off. */
   cameraStream: MediaStream | null
   cameraOn: boolean
@@ -46,6 +48,7 @@ export function useConversation(characterId: string): Conversation {
   const [gesture, setGesture] = useState('idle')
   const [emotion, setEmotion] = useState('neutral')
   const [detail, setDetail] = useState('')
+  const [replySpoken, setReplySpoken] = useState(false)
 
   const captureRef = useRef<Capture | null>(null)
   const sessionRef = useRef<Session | null>(null)
@@ -107,6 +110,7 @@ export function useConversation(characterId: string): Conversation {
         switch (message.type) {
           case 'transcript':
             setTranscript(message.text)
+            setReplySpoken(false)
             // A new turn: whatever was cut off before is finished with, and
             // the next utterance gets a fresh still.
             bargeInRef.current.reset()
@@ -115,6 +119,8 @@ export function useConversation(characterId: string): Conversation {
             break
           case 'reply':
             setReply(message.text)
+            // A new reply is unspoken until her audio for it has played.
+            setReplySpoken(false)
             break
           case 'expression':
             setGesture(message.gesture)
@@ -135,9 +141,11 @@ export function useConversation(characterId: string): Conversation {
             break
           case 'interrupted':
             // She stopped because we spoke over her; go straight back to
-            // listening rather than reporting an error.
+            // listening rather than reporting an error. Whatever she managed
+            // to say is now on the record.
             playerRef.current?.stop()
             spokenRef.current = false
+            setReplySpoken(true)
             setStatus('listening')
             break
           case 'farewell':
@@ -154,6 +162,7 @@ export function useConversation(characterId: string): Conversation {
             setStatus('error')
             break
           case 'done':
+            setReplySpoken(true)
             teardown()
             setStatus('idle')
             break
@@ -245,6 +254,19 @@ export function useConversation(characterId: string): Conversation {
   // it in state would re-render the whole tree 60 times a second.
   const loudness = useCallback(() => playerRef.current?.currentLoudness() ?? 0, [])
 
+  // Her audio is scheduled ahead of real time, so the last chunk arrives well
+  // before it is heard. Watching for the playback to fall quiet is what tells
+  // us she has actually finished the sentence.
+  useEffect(() => {
+    if (status !== 'speaking') return
+    const timer = window.setInterval(() => {
+      if (playerRef.current && playerRef.current.currentLoudness() < 0.004) {
+        setReplySpoken(true)
+      }
+    }, 150)
+    return () => { window.clearInterval(timer) }
+  }, [status])
+
   // Reused between frames so the render loop allocates nothing.
   const featureScratch = useRef<AudioFeatures>({ ...SILENT_FEATURES })
   const features = useCallback(
@@ -263,6 +285,7 @@ export function useConversation(characterId: string): Conversation {
     detail,
     loudness,
     features,
+    replySpoken,
     cameraStream,
     cameraOn: cameraStream !== null,
     toggleCamera,

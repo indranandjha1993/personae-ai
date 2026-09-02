@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 
 import type { AudioFeatures } from './audio/playback'
+import { visibleCaption } from './caption'
 import './styles.css'
 import { useConversation } from './useConversation'
 
@@ -74,17 +75,18 @@ function useVoiceLight(
 function Conversation({ characterId, name }: { characterId: string; name: string }) {
   const {
     status, transcript, reply, gesture, emotion, detail,
-    features, cameraStream, cameraOn, toggleCamera, start, stop,
+    features, replySpoken, cameraStream, cameraOn, toggleCamera, start, stop,
   } = useConversation(characterId)
   const active = status !== 'idle' && status !== 'error'
   const stage = useRef<HTMLDivElement>(null)
   useVoiceLight(stage, features)
 
-  // Her words appear once she has finished saying them: showing the text as it
-  // arrives spoils the line seconds before she speaks it. Purely derived, so
-  // there is no state to keep in step.
-  const [liveCaptions, setLiveCaptions] = useState(false)
-  const caption = liveCaptions || status !== 'speaking' ? reply : ''
+  // Captions are on by default; the toggle turns them off for anyone who would
+  // rather hear the line before reading it. Off, her words wait until she has
+  // actually finished saying them -- the reply text arrives before the first
+  // audio chunk, so status alone would show it during the pause beforehand.
+  const [liveCaptions, setLiveCaptions] = useState(true)
+  const caption = visibleCaption(reply, replySpoken, liveCaptions)
 
   return (
     <section aria-label="Conversation">

@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { App } from './App'
@@ -38,9 +39,11 @@ describe('App', () => {
     expect(camera).toHaveAttribute('aria-pressed', 'false')
   })
 
-  it('offers live captions for anyone who needs the text as she speaks', async () => {
+  it('shows captions by default and lets them be turned off', async () => {
     render(<App />)
     const captions = await screen.findByRole('button', { name: 'Live captions' })
+    expect(captions).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(captions)
     expect(captions).toHaveAttribute('aria-pressed', 'false')
   })
 
