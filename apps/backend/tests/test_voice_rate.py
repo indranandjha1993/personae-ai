@@ -42,6 +42,7 @@ class StubLlm:
         system_prompt: str,
         transcript: str,
         history: Sequence[Message] = (),
+        image: bytes | None = None,
     ) -> AsyncIterator[str]:
         async def once() -> AsyncIterator[str]:
             yield "a reply"

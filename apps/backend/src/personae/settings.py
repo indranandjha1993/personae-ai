@@ -6,7 +6,9 @@ from typing import Annotated, Literal
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-ProviderMode = Literal["mock", "live"]
+# How a language endpoint expects requests to be shaped. Vision in particular
+# differs: OpenAI takes image_url parts, Anthropic takes base64 image blocks.
+LlmWire = Literal["openai", "anthropic"]
 
 
 def env_file_path() -> Path:
@@ -40,10 +42,6 @@ class Settings(BaseSettings):
         frozen=True,
     )
 
-    stt_mode: ProviderMode = "mock"
-    llm_mode: ProviderMode = "mock"
-    tts_mode: ProviderMode = "mock"
-
     deepgram_api_key: str | None = None
 
     # Speech model and voice. A character pack may name its own voice, in which
@@ -58,5 +56,11 @@ class Settings(BaseSettings):
     llm_base_url: str | None = None
     llm_api_key: str | None = None
     llm_model: str = "gpt-4o-mini"
+
+    # OpenAI-compatible covers OpenAI, OpenRouter, Groq, and most local servers.
+    # Anthropic-shaped covers the Claude API and gateways that speak it.
+    llm_wire: LlmWire = "openai"
+    # Vision may need the other wire format, and often a different model.
+    vision_model: str | None = None
 
     pack_search_paths: tuple[str, ...] = ("packs/bundled", "packs/local")

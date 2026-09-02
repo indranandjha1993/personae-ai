@@ -42,8 +42,10 @@ class MockLlm:
         system_prompt: str,
         transcript: str,
         history: Sequence[Message] = (),
+        image: bytes | None = None,
     ) -> AsyncIterator[str]:
-        for fragment in (f'You said "{transcript}"', ", and I am a mock reply."):
+        seen = f" I can see a {len(image)}-byte frame." if image else ""
+        for fragment in (f'You said "{transcript}"', ", and I am a mock reply.", seen):
             await asyncio.sleep(0)
             yield fragment
 

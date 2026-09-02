@@ -31,7 +31,13 @@ class OpenAiCompatibleLlm:
         system_prompt: str,
         transcript: str,
         history: Sequence[Message] = (),
+        image: bytes | None = None,
     ) -> AsyncIterator[str]:
+        if image is not None:
+            logger.warning(
+                "this endpoint's wire format carries no image; set "
+                "PERSONAE_LLM_WIRE=anthropic to enable vision"
+            )
         payload = {
             "model": self._model,
             "stream": True,

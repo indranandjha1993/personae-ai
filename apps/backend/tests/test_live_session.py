@@ -42,7 +42,11 @@ class SlowLlm:
         self.seen_history: list[Sequence[Message]] = []
 
     def respond(
-        self, system_prompt: str, transcript: str, history: Sequence[Message] = ()
+        self,
+        system_prompt: str,
+        transcript: str,
+        history: Sequence[Message] = (),
+        image: bytes | None = None,
     ) -> AsyncIterator[str]:
         self.seen_history.append(list(history))
 

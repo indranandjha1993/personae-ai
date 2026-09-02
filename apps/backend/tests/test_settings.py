@@ -7,21 +7,26 @@ import pytest
 from personae.settings import Settings, env_file_path
 
 
-def test_defaults_to_mock_providers() -> None:
+def test_defaults_to_no_credentials() -> None:
     """The zero-key promise: a bare environment yields a runnable configuration."""
     settings = Settings()
-    assert (settings.stt_mode, settings.llm_mode, settings.tts_mode) == ("mock", "mock", "mock")
+    assert settings.deepgram_api_key is None
+    assert settings.llm_api_key is None
 
 
-def test_reads_provider_mode_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("PERSONAE_STT_MODE", "live")
-    assert Settings().stt_mode == "live"
+def test_defaults_to_the_openai_wire_format() -> None:
+    assert Settings().llm_wire == "openai"
 
 
-def test_rejects_unknown_provider_mode(monkeypatch: pytest.MonkeyPatch) -> None:
-    """An invalid mode must fail at load, not at first use."""
-    monkeypatch.setenv("PERSONAE_LLM_MODE", "sometimes")
-    with pytest.raises(ValueError, match="llm_mode"):
+def test_reads_the_wire_format_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PERSONAE_LLM_WIRE", "anthropic")
+    assert Settings().llm_wire == "anthropic"
+
+
+def test_rejects_an_unknown_wire_format(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An invalid value must fail at load, not at first use."""
+    monkeypatch.setenv("PERSONAE_LLM_WIRE", "grpc")
+    with pytest.raises(ValueError, match="llm_wire"):
         Settings()
 
 

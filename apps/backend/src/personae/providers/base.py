@@ -29,8 +29,13 @@ class LlmProvider(Protocol):
         system_prompt: str,
         transcript: str,
         history: Sequence[Message] = (),
+        image: bytes | None = None,
     ) -> AsyncIterator[str]:
-        """Yield the reply in streamed fragments, given prior turns."""
+        """Yield the reply in streamed fragments, given prior turns.
+
+        ``image`` is a camera frame for the model to look at, when the listener
+        has the camera on and the endpoint supports vision.
+        """
         ...
 
 

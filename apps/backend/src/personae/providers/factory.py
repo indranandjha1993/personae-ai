@@ -10,7 +10,12 @@ from personae.settings import Settings
 
 
 def build_stt(settings: Settings) -> SttProvider:
-    if settings.stt_mode == "mock":
+    """Live when a key is configured, a fake otherwise.
+
+    Selection follows the credentials rather than an explicit switch: a mode
+    that disagrees with the keys present is a confusing way to fail.
+    """
+    if not settings.deepgram_api_key:
         return MockStt()
     from personae.providers.deepgram import DeepgramStt
 
@@ -23,7 +28,7 @@ def build_stt(settings: Settings) -> SttProvider:
 
 
 def build_tts(settings: Settings) -> TtsProvider:
-    if settings.tts_mode == "mock":
+    if not settings.deepgram_api_key:
         return MockTts()
     from personae.providers.deepgram import DeepgramTts
 
@@ -34,19 +39,27 @@ def build_tts(settings: Settings) -> TtsProvider:
 
 
 def build_llm(settings: Settings) -> LlmProvider:
-    if settings.llm_mode == "mock":
+    if not settings.llm_api_key:
         return MockLlm()
+
+    # A key with no endpoint is half-configured; say so rather than falling
+    # back to a fake and leaving someone wondering why nothing is live.
+    _require_all((settings.llm_base_url, "LLM_BASE_URL"))
+
+    if settings.llm_wire == "anthropic":
+        from personae.providers.anthropic_compat import AnthropicCompatibleLlm
+
+        return AnthropicCompatibleLlm(
+            base_url=settings.llm_base_url or "",
+            api_key=settings.llm_api_key,
+            model=settings.llm_model,
+        )
+
     from personae.providers.openai_compat import OpenAiCompatibleLlm
 
-    # Reported together: being told about one missing value, fixing it, and
-    # then being told about the next is a poor first-run experience.
-    _require_all(
-        (settings.llm_api_key, "LLM_API_KEY"),
-        (settings.llm_base_url, "LLM_BASE_URL"),
-    )
     return OpenAiCompatibleLlm(
         base_url=settings.llm_base_url or "",
-        api_key=settings.llm_api_key or "",
+        api_key=settings.llm_api_key,
         model=settings.llm_model,
     )
 

@@ -86,10 +86,11 @@ def create_app() -> FastAPI:
         return {
             "status": "ok",
             "providers": {
-                "stt": settings.stt_mode,
-                "llm": settings.llm_mode,
-                "tts": settings.tts_mode,
+                "stt": "live" if settings.deepgram_api_key else "mock",
+                "llm": "live" if settings.llm_api_key else "mock",
+                "tts": "live" if settings.deepgram_api_key else "mock",
             },
+            "vision": settings.llm_wire == "anthropic" and bool(settings.llm_api_key),
             "characters": len(registry),
         }
 
