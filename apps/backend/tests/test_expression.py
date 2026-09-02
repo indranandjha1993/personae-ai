@@ -79,3 +79,21 @@ def test_a_terse_reply_stays_at_rest() -> None:
         character.expression.gestures[0],
         character.expression.emotions[0],
     )
+
+
+def test_hints_match_whole_words_only() -> None:
+    """Substring matching read 'ha' inside 'what' and 'changed', so she was
+    amused by ordinary statements."""
+    character = _character()
+    for text in (
+        "What has changed?",
+        "I changed the handler.",
+        "Perhaps we should also refactor that.",
+    ):
+        _, emotion = infer(text, character)
+        assert emotion != "amused", text
+
+
+def test_a_real_laugh_still_reads_as_amused() -> None:
+    character = _character()
+    assert infer("Ha! That is a good joke.", character)[1] == "amused"

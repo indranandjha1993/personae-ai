@@ -6,6 +6,8 @@ matches, the first declared value is used -- every character therefore has a
 well-defined resting state.
 """
 
+import re
+
 from personae.packs.models import Character
 
 _EMOTION_HINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -102,7 +104,10 @@ def _first_match(
     hints: tuple[tuple[str, tuple[str, ...]], ...],
     allowed: tuple[str, ...],
 ) -> str:
+    words = set(re.findall(r"[a-z']+", text))
     for candidate, triggers in hints:
-        if candidate in allowed and any(trigger in text for trigger in triggers):
+        # Whole words only: matching substrings found "ha" inside "what" and
+        # "changed", so ordinary statements read as amusement.
+        if candidate in allowed and words.intersection(triggers):
             return candidate
     return allowed[0]
