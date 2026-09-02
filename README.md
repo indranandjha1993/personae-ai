@@ -62,8 +62,7 @@ current at the time of writing.
 ```
 Browser
   │  AudioWorklet captures mic → PCM frames
-  │  WebSocket  ws://localhost:8000/ws/session/{pack}/{character}  (push to talk)
-  │              ws://localhost:8000/ws/live/{pack}/{character}     (live)
+  │  WebSocket  ws://localhost:8000/ws/live/{pack}/{character}
   ▼
 FastAPI
   ├─ SttProvider    streaming transcription
@@ -136,15 +135,14 @@ docker compose up --build
 
 ## Live conversation
 
-Two modes share the same pipeline.
+The microphone stays open. Deepgram decides when you have stopped speaking, so nothing is
+held down, and talking over a reply cuts it short — input counts as speech only while she is
+actually speaking and only when it is clearly louder than what is playing, so the reply
+leaking back through the microphone does not interrupt her.
 
-**Push to talk** holds the microphone open while you press the button, and answers when you
-release it.
-
-**Live conversation** keeps listening. Deepgram decides when you have stopped speaking, so
-nothing is held down, and talking over a reply cuts it short — the frontend only treats input
-as speech when it is clearly louder than what is playing, so the reply leaking back through
-the microphone does not interrupt her constantly.
+Switch the camera on and a still from the moment you spoke is attached to that turn, so she
+can answer questions about what is in front of you. This needs a language endpoint that
+accepts images: see `PERSONAE_LLM_WIRE` in `.env.example`.
 
 An interrupted reply is remembered as only what was actually said aloud, so her next answer
 never refers to words you did not hear. History is a bounded window of recent turns.
