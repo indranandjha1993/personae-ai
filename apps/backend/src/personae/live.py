@@ -10,6 +10,7 @@ from personae.conversation import History, Turn
 from personae.packs.models import Character
 from personae.protocol import ServerMessage
 from personae.providers.base import LlmProvider, SttProvider, TtsProvider
+from personae.sentences import SentenceBuffer
 from personae.speech import farewell_marked, for_speech, strip_farewell
 
 logger = logging.getLogger(__name__)
@@ -107,6 +108,31 @@ class LiveSession:
         async def produce() -> None:
             nonlocal spoken
             try:
+                voice = self._character.voice
+                sentences = SentenceBuffer()
+                first = True
+
+                async def say(text: str) -> None:
+                    """Synthesise one sentence and hand its audio onward."""
+                    nonlocal first
+                    speakable = for_speech(text)
+                    if not speakable:
+                        return
+                    if first:
+                        # The face should move with the first sound, not with
+                        # the last word of the reply.
+                        gesture, emotion = expression.infer(speakable, self._character)
+                        await outbound.put(
+                            ServerMessage.expression(gesture=gesture, emotion=emotion)
+                        )
+                        first = False
+                    async for chunk in self._tts.synthesize(
+                        speakable, voice.provider_voice, voice.rate
+                    ):
+                        await outbound.put(ServerMessage.audio(chunk))
+
+                # Each sentence is spoken as it arrives, so she starts on the
+                # first while the model is still writing the rest.
                 async for fragment in self._llm.respond(
                     _prompt_for(self._character.persona.prompt, frame is not None),
                     transcript,
@@ -114,19 +140,15 @@ class LiveSession:
                     frame,
                 ):
                     spoken += fragment
+                    for sentence in sentences.feed(fragment):
+                        await say(sentence)
+
+                await say(sentences.flush())
+
                 ending = farewell_marked(spoken)
                 spoken = strip_farewell(spoken)
+                # The caption follows the speech rather than preceding it.
                 await outbound.put(ServerMessage.reply(spoken))
-
-                gesture, emotion = expression.infer(spoken, self._character)
-                await outbound.put(ServerMessage.expression(gesture=gesture, emotion=emotion))
-
-                voice = self._character.voice
-                # Only the spoken copy is stripped; the caption keeps its text.
-                async for chunk in self._tts.synthesize(
-                    for_speech(spoken), voice.provider_voice, voice.rate
-                ):
-                    await outbound.put(ServerMessage.audio(chunk))
 
                 # After the audio, so her goodbye is never cut off mid-word.
                 if ending:

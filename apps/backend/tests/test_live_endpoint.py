@@ -24,10 +24,9 @@ def _collect(socket: object, limit: int = 40) -> list[dict[str, object]]:
     for _ in range(limit):
         message = socket.receive_json()  # type: ignore[attr-defined]
         messages.append(message)
-        if message["type"] in {"done", "reply"} and message["type"] == "done":
-            break
-        if message["type"] == "audio":
-            # Live mode never sends 'done'; stop once speech has begun.
+        # Audio now precedes the caption, so collecting stops at the reply
+        # rather than at the first sound.
+        if message["type"] in {"done", "reply", "error"}:
             break
     return messages
 

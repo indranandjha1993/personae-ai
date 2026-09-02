@@ -220,3 +220,38 @@ async def test_an_ordinary_reply_does_not_end_the_conversation() -> None:
 
     kinds = [m.model_dump()["type"] async for m in session.run()]
     assert "farewell" not in kinds
+
+
+async def test_audio_starts_before_the_reply_is_finished() -> None:
+    """The whole point: she should be speaking the first sentence while the
+    model is still writing the second."""
+    llm = SlowLlm(["First thought here. ", "Second thought here."], 0.08)
+    session = LiveSession(_character(), ScriptedStt(["hello"]), llm, SilentTts())
+    await session.offer(b"\x10\x20" * 40)
+    await session.close_input()
+
+    kinds = [m.model_dump()["type"] async for m in session.run()]
+    # Audio must appear before the final reply text, not after it.
+    assert "audio" in kinds
+    assert kinds.index("audio") < kinds.index("reply"), kinds
+
+
+async def test_every_sentence_is_spoken() -> None:
+    spoken: list[str] = []
+
+    class RecordingTts:
+        def synthesize(self, text: str, voice: str, rate: float = 1.0) -> AsyncIterator[bytes]:
+            spoken.append(text)
+
+            async def frames() -> AsyncIterator[bytes]:
+                yield b"\x00\x00"
+
+            return frames()
+
+    llm = SlowLlm(["One thing. ", "Then another."], 0.0)
+    session = LiveSession(_character(), ScriptedStt(["hi"]), llm, RecordingTts())
+    await session.offer(b"\x10\x20" * 40)
+    await session.close_input()
+    await _drain(session)
+
+    assert "".join(spoken).replace(" ", "") == "Onething.Thenanother."
