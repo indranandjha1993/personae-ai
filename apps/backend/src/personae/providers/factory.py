@@ -53,6 +53,7 @@ def build_llm(settings: Settings) -> LlmProvider:
             base_url=settings.llm_base_url or "",
             api_key=settings.llm_api_key,
             model=settings.llm_model,
+            vision_model=settings.vision_model,
         )
 
     from personae.providers.openai_compat import OpenAiCompatibleLlm

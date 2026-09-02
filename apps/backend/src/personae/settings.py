@@ -63,4 +63,8 @@ class Settings(BaseSettings):
     # Vision may need the other wire format, and often a different model.
     vision_model: str | None = None
 
+    # When set, the websocket requires ?token=... Unset leaves it open, which
+    # is right for localhost and wrong for anything reachable from elsewhere.
+    access_token: str | None = None
+
     pack_search_paths: tuple[str, ...] = ("packs/bundled", "packs/local")

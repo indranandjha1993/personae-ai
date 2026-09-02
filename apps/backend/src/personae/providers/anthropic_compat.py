@@ -23,10 +23,18 @@ MAX_TOKENS = 512
 class AnthropicCompatibleLlm:
     """Character-voiced replies, optionally given a camera frame to look at."""
 
-    def __init__(self, base_url: str, api_key: str, model: str) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        model: str,
+        vision_model: str | None = None,
+    ) -> None:
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._model = model
+        # Vision often warrants a different, usually larger, model.
+        self._vision_model = vision_model or model
 
     async def respond(
         self,
@@ -51,13 +59,16 @@ class AnthropicCompatibleLlm:
             )
 
         payload = {
-            "model": self._model,
+            "model": self._vision_model if image is not None else self._model,
             "max_tokens": MAX_TOKENS,
             "stream": True,
             "system": system_prompt,
             "messages": [*history, {"role": "user", "content": content}],
         }
         headers = {
+            # The first-party API authenticates on x-api-key; gateways in front
+            # of it commonly want the bearer form, so both are sent.
+            "x-api-key": self._api_key,
             "Authorization": f"Bearer {self._api_key}",
             "anthropic-version": "2023-06-01",
         }

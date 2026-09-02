@@ -17,12 +17,17 @@ def _stream(*deltas: str) -> bytes:
     return "".join(lines).encode()
 
 
+SENT_HEADERS: dict[str, str] = {}
+
+
 @pytest.fixture
 def captured(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]:
     seen: list[dict[str, object]] = []
+    SENT_HEADERS.clear()
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append(json.loads(request.content))
+        SENT_HEADERS.update(request.headers)
         assert request.url.path.endswith("/messages")
         return httpx.Response(200, content=_stream("Hello", " there"))
 
@@ -73,3 +78,28 @@ def test_ignores_events_that_are_not_text_deltas() -> None:
     assert _fragment_of('data: {"type":"content_block_delta","delta":{}}') == ""
     assert _fragment_of("data: {not json") == ""
     assert _fragment_of("event: ping") == ""
+
+
+async def test_sends_the_api_key_header_anthropic_expects(
+    captured: list[dict[str, object]],
+) -> None:
+    """api.anthropic.com authenticates on x-api-key; Bearer alone gets a 401."""
+    llm = AnthropicCompatibleLlm("https://example.invalid/v1", "secret", "m")
+    async for _ in llm.respond("You are C.", "hi"):
+        pass
+
+    assert SENT_HEADERS["x-api-key"] == "secret"
+    # Gateways in front of the API often want the bearer form as well.
+    assert SENT_HEADERS["authorization"] == "Bearer secret"
+
+
+async def test_vision_can_use_a_different_model(captured: list[dict[str, object]]) -> None:
+    """A frame often warrants a larger model than plain conversation."""
+    llm = AnthropicCompatibleLlm("https://example.invalid/v1", "k", "text-model", "vision-model")
+    async for _ in llm.respond("You are C.", "hi"):
+        pass
+    assert captured[0]["model"] == "text-model"
+
+    async for _ in llm.respond("You are C.", "what is this?", image=b"\xff\xd8jpeg"):
+        pass
+    assert captured[1]["model"] == "vision-model"
