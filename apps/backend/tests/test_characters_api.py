@@ -19,7 +19,7 @@ def test_character_summary_excludes_the_persona_prompt() -> None:
     with TestClient(create_app()) as client:
         body = client.get("/characters").json()
     entry = next(c for c in body["characters"] if c["id"] == "bundled/seed")
-    assert entry["display_name"] == "Seed"
+    assert entry["display_name"] == "Wren"
     assert entry["theme"]["primary"] == "#8b7fd4"
     assert "idle" in entry["expression"]["gestures"]
     assert "persona" not in entry

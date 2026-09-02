@@ -36,4 +36,4 @@ def test_the_persona_forbids_inventing_a_name_for_the_listener() -> None:
     from personae.packs.loader import load_packs
 
     prompt = load_packs([REPO_ROOT / "packs" / "bundled"]).get("bundled/seed").persona.prompt
-    assert "never invent a name" in prompt.lower()
+    assert "never guess one and never invent one" in prompt.lower()

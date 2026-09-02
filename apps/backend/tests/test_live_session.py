@@ -177,7 +177,7 @@ async def test_she_is_told_when_she_can_see() -> None:
     await session.offer(b"\x10\x20" * 40)
     await session.close_input()
     await _drain(session)
-    assert "camera is on" in llm.seen_prompts[0].lower()
+    assert "you can see the person" in llm.seen_prompts[0].lower()
 
 
 async def test_she_is_not_told_she_can_see_when_no_frame_arrived() -> None:
@@ -186,7 +186,7 @@ async def test_she_is_not_told_she_can_see_when_no_frame_arrived() -> None:
     await session.offer(b"\x10\x20" * 40)
     await session.close_input()
     await _drain(session)
-    assert "camera is on" not in llm.seen_prompts[0].lower()
+    assert "you can see the person" not in llm.seen_prompts[0].lower()
 
 
 async def test_she_can_end_the_conversation_after_speaking() -> None:
