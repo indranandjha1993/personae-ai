@@ -151,3 +151,21 @@ h1 {
   color: var(--muted);
   font-size: 0.72rem;
 }
+
+.mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.mode input { cursor: pointer; }
+.mode:has(input:disabled) { opacity: 0.5; cursor: default; }
+
+.hint {
+  margin: 0.6rem 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}

@@ -8,12 +8,15 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { BargeInDetector, frameLevel } from './audio/barge-in'
 import { startCapture, type Capture } from './audio/capture'
 import { PcmPlayer } from './audio/playback'
 import { decodePcm, DEFAULT_SAMPLE_RATE } from './protocol'
 import { openSession, type Session } from './session'
 
 export type Status = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error'
+
+export type Mode = 'turn' | 'live'
 
 export interface Conversation {
   status: Status
@@ -28,7 +31,7 @@ export interface Conversation {
   stop: () => void
 }
 
-export function useConversation(characterId: string): Conversation {
+export function useConversation(characterId: string, mode: Mode = 'turn'): Conversation {
   const [status, setStatus] = useState<Status>('idle')
   const [transcript, setTranscript] = useState('')
   const [reply, setReply] = useState('')
@@ -40,6 +43,7 @@ export function useConversation(characterId: string): Conversation {
   const sessionRef = useRef<Session | null>(null)
   const playerRef = useRef<PcmPlayer | null>(null)
   const contextRef = useRef<AudioContext | null>(null)
+  const bargeInRef = useRef(new BargeInDetector())
 
   const teardown = useCallback(() => {
     captureRef.current?.stop()
@@ -71,6 +75,7 @@ export function useConversation(characterId: string): Conversation {
     contextRef.current = context
     let player: PcmPlayer | null = null
 
+    bargeInRef.current.reset()
     const session = openSession(characterId, {
       onMessage: (message) => {
         switch (message.type) {
@@ -97,6 +102,11 @@ export function useConversation(characterId: string): Conversation {
             }
             player.enqueue(decodePcm(message.pcm))
             break
+          case 'interrupted':
+            // She stopped because we spoke over her; go straight back to
+            // listening rather than reporting an error.
+            setStatus('listening')
+            break
           case 'error':
             setDetail(message.detail)
             setStatus('error')
@@ -110,16 +120,28 @@ export function useConversation(characterId: string): Conversation {
         setDetail(message)
         setStatus('error')
       },
-    })
+    }, mode)
     sessionRef.current = session
 
-    startCapture((frame) => { session.sendAudio(frame) })
+    startCapture((frame) => {
+      session.sendAudio(frame)
+      // In live mode the microphone stays open while she talks, so speaking
+      // over her has to cut the reply short.
+      if (mode === 'live' && playerRef.current) {
+        const speaking = playerRef.current.currentLoudness()
+        if (bargeInRef.current.observe(frameLevel(frame), speaking)) {
+          playerRef.current.stop()
+          session.interrupt()
+          setStatus('listening')
+        }
+      }
+    })
       .then((capture) => { captureRef.current = capture })
       .catch((error: unknown) => {
         setDetail(error instanceof Error ? error.message : 'microphone unavailable')
         setStatus('error')
       })
-  }, [characterId])
+  }, [characterId, mode])
 
   const stop = useCallback(() => {
     captureRef.current?.stop()

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 
 import './styles.css'
-import { useConversation } from './useConversation'
+import { useConversation, type Mode } from './useConversation'
 
 // The 3D stack is most of the bundle, so it loads on demand.
 const AvatarStage = lazy(() =>
@@ -41,10 +41,18 @@ export function App() {
   )
 }
 
+function startLabel(mode: Mode, status: string): string {
+  if (status === 'idle' || status === 'error') {
+    return mode === 'live' ? 'Start conversation' : 'Start speaking'
+  }
+  return mode === 'live' ? 'End conversation' : 'Stop speaking'
+}
+
 function Conversation({ characterId }: { characterId: string }) {
+  const [mode, setMode] = useState<Mode>('turn')
   const { status, transcript, reply, gesture, emotion, detail, loudness, start, stop } =
-    useConversation(characterId)
-  const listening = status === 'listening'
+    useConversation(characterId, mode)
+  const active = status !== 'idle' && status !== 'error'
 
   return (
     <section className="panel" aria-label="Conversation">
@@ -61,15 +69,29 @@ function Conversation({ characterId }: { characterId: string }) {
         <button
           type="button"
           className="talk"
-          data-listening={listening}
-          onClick={listening ? stop : start}
+          data-listening={active}
+          onClick={active ? stop : start}
         >
-          {listening ? 'Stop speaking' : 'Start speaking'}
+          {startLabel(mode, status)}
         </button>
         <span className="status" data-state={status}>
           <span data-testid="status">{status}</span>
         </span>
+        <label className="mode">
+          <input
+            type="checkbox"
+            checked={mode === 'live'}
+            disabled={active}
+            onChange={(event) => { setMode(event.target.checked ? 'live' : 'turn') }}
+          />
+          Live conversation
+        </label>
       </div>
+      {mode === 'live' && !active && (
+        <p className="hint">
+          She listens continuously and answers when you pause. Talk over her to cut in.
+        </p>
+      )}
 
       {detail !== '' && <p className="alert" role="alert">{detail}</p>}
 

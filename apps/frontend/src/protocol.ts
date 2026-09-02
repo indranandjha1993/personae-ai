@@ -32,6 +32,10 @@ export interface ExpressionMessage {
   emotion: string
 }
 
+export interface InterruptedMessage {
+  type: 'interrupted'
+}
+
 export interface ErrorMessage {
   type: 'error'
   detail: string
@@ -47,6 +51,7 @@ export type ServerMessage =
   | ReplyMessage
   | AudioMessage
   | ExpressionMessage
+  | InterruptedMessage
   | ErrorMessage
   | DoneMessage
 
@@ -76,6 +81,8 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
         : null
     case 'error':
       return typeof raw['detail'] === 'string' ? { type: 'error', detail: raw['detail'] } : null
+    case 'interrupted':
+      return { type: 'interrupted' }
     case 'done':
       return { type: 'done' }
     default:

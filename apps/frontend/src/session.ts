@@ -16,6 +16,7 @@ export interface SessionHandlers {
 export interface Session {
   sendAudio: (frame: Int16Array) => void
   stopSpeaking: () => void
+  interrupt: () => void
   close: () => void
 }
 
@@ -29,8 +30,13 @@ function toBase64(frame: Int16Array): string {
   return btoa(binary)
 }
 
-export function openSession(characterId: string, handlers: SessionHandlers): Session {
-  const url = new URL(`/ws/session/${characterId}`, window.location.href)
+export function openSession(
+  characterId: string,
+  handlers: SessionHandlers,
+  mode: 'turn' | 'live' = 'turn',
+): Session {
+  const path = mode === 'live' ? 'ws/live' : 'ws/session'
+  const url = new URL(`/${path}/${characterId}`, window.location.href)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   const socket = new WebSocket(url)
 
@@ -60,6 +66,7 @@ export function openSession(characterId: string, handlers: SessionHandlers): Ses
   return {
     sendAudio: (frame) => { sendWhenOpen({ type: 'audio', pcm: toBase64(frame) }) },
     stopSpeaking: () => { sendWhenOpen({ type: 'stop' }) },
+    interrupt: () => { sendWhenOpen({ type: 'interrupt' }) },
     close: () => { socket.close() },
   }
 }

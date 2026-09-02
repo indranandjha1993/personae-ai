@@ -62,7 +62,8 @@ current at the time of writing.
 ```
 Browser
   │  AudioWorklet captures mic → PCM frames
-  │  WebSocket  ws://localhost:8000/ws/session/{pack}/{character}
+  │  WebSocket  ws://localhost:8000/ws/session/{pack}/{character}  (push to talk)
+  │              ws://localhost:8000/ws/live/{pack}/{character}     (live)
   ▼
 FastAPI
   ├─ SttProvider    streaming transcription
@@ -127,6 +128,21 @@ someone's first utterance.
 ```bash
 docker compose up --build
 ```
+
+## Live conversation
+
+Two modes share the same pipeline.
+
+**Push to talk** holds the microphone open while you press the button, and answers when you
+release it.
+
+**Live conversation** keeps listening. Deepgram decides when you have stopped speaking, so
+nothing is held down, and talking over a reply cuts it short — the frontend only treats input
+as speech when it is clearly louder than what is playing, so the reply leaking back through
+the microphone does not interrupt her constantly.
+
+An interrupted reply is remembered as only what was actually said aloud, so her next answer
+never refers to words you did not hear. History is a bounded window of recent turns.
 
 ## The avatar
 
