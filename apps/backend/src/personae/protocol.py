@@ -150,6 +150,10 @@ class ServerMessage(_Message):
         return InterruptedMessage(type="interrupted")
 
     @staticmethod
+    def farewell() -> "FarewellMessage":
+        return FarewellMessage(type="farewell")
+
+    @staticmethod
     def error(detail: str) -> "ErrorMessage":
         return ErrorMessage(type="error", detail=detail)
 
@@ -187,6 +191,12 @@ class InterruptedMessage(ServerMessage):
     """The reply was cut short because the listener started speaking."""
 
     type: Literal["interrupted"]
+
+
+class FarewellMessage(ServerMessage):
+    """She has said goodbye; the conversation is over once her audio ends."""
+
+    type: Literal["farewell"]
 
 
 class ErrorMessage(ServerMessage):

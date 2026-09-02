@@ -10,7 +10,7 @@ from personae.conversation import History, Turn
 from personae.packs.models import Character
 from personae.protocol import ServerMessage
 from personae.providers.base import LlmProvider, SttProvider, TtsProvider
-from personae.speech import for_speech
+from personae.speech import farewell_marked, for_speech, strip_farewell
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +114,8 @@ class LiveSession:
                     frame,
                 ):
                     spoken += fragment
+                ending = farewell_marked(spoken)
+                spoken = strip_farewell(spoken)
                 await outbound.put(ServerMessage.reply(spoken))
 
                 gesture, emotion = expression.infer(spoken, self._character)
@@ -125,6 +127,10 @@ class LiveSession:
                     for_speech(spoken), voice.provider_voice, voice.rate
                 ):
                     await outbound.put(ServerMessage.audio(chunk))
+
+                # After the audio, so her goodbye is never cut off mid-word.
+                if ending:
+                    await outbound.put(ServerMessage.farewell())
             except asyncio.CancelledError:
                 raise
             except Exception:

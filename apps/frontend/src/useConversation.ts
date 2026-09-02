@@ -17,6 +17,9 @@ import { openSession, type Session } from './session'
 
 export type Status = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error'
 
+/** Long enough for the tail of her goodbye to finish playing. */
+const FAREWELL_GRACE_MS = 1200
+
 export interface Conversation {
   status: Status
   /** The camera stream, for a self-view, or null when the camera is off. */
@@ -136,6 +139,14 @@ export function useConversation(characterId: string): Conversation {
             playerRef.current?.stop()
             spokenRef.current = false
             setStatus('listening')
+            break
+          case 'farewell':
+            // She has finished saying goodbye; let the last audio drain, then
+            // close the way a call ends rather than cutting her off.
+            window.setTimeout(() => {
+              teardown()
+              setStatus('idle')
+            }, FAREWELL_GRACE_MS)
             break
           case 'error':
             setDetail(message.detail)

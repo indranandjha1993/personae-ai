@@ -187,3 +187,36 @@ async def test_she_is_not_told_she_can_see_when_no_frame_arrived() -> None:
     await session.close_input()
     await _drain(session)
     assert "camera is on" not in llm.seen_prompts[0].lower()
+
+
+async def test_she_can_end_the_conversation_after_speaking() -> None:
+    """A goodbye should close the call, but only once she has finished saying it."""
+    llm = SlowLlm(["Bye, take care. [end]"], 0.0)
+    session = LiveSession(_character(), ScriptedStt(["bye"]), llm, SilentTts())
+    await session.offer(b"\x10\x20" * 40)
+    await session.close_input()
+
+    kinds = [m.model_dump()["type"] async for m in session.run()]
+    assert kinds[-1] == "farewell", kinds
+    # The last audio must precede it, or she is cut off mid-word.
+    assert kinds.index("audio") < kinds.index("farewell")
+
+
+async def test_the_marker_never_reaches_the_listener() -> None:
+    llm = SlowLlm(["Goodbye. [end]"], 0.0)
+    session = LiveSession(_character(), ScriptedStt(["bye"]), llm, SilentTts())
+    await session.offer(b"\x10\x20" * 40)
+    await session.close_input()
+
+    replies = [m.model_dump() async for m in session.run() if m.model_dump()["type"] == "reply"]
+    assert replies[0]["text"] == "Goodbye."
+
+
+async def test_an_ordinary_reply_does_not_end_the_conversation() -> None:
+    llm = SlowLlm(["What else can I help with?"], 0.0)
+    session = LiveSession(_character(), ScriptedStt(["hello"]), llm, SilentTts())
+    await session.offer(b"\x10\x20" * 40)
+    await session.close_input()
+
+    kinds = [m.model_dump()["type"] async for m in session.run()]
+    assert "farewell" not in kinds

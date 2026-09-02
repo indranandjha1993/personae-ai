@@ -36,6 +36,10 @@ export interface InterruptedMessage {
   type: 'interrupted'
 }
 
+export interface FarewellMessage {
+  type: 'farewell'
+}
+
 export interface ErrorMessage {
   type: 'error'
   detail: string
@@ -52,6 +56,7 @@ export type ServerMessage =
   | AudioMessage
   | ExpressionMessage
   | InterruptedMessage
+  | FarewellMessage
   | ErrorMessage
   | DoneMessage
 
@@ -83,6 +88,8 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
       return typeof raw['detail'] === 'string' ? { type: 'error', detail: raw['detail'] } : null
     case 'interrupted':
       return { type: 'interrupted' }
+    case 'farewell':
+      return { type: 'farewell' }
     case 'done':
       return { type: 'done' }
     default:

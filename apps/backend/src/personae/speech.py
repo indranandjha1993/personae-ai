@@ -17,9 +17,27 @@ _ITALIC = re.compile(r"(?<!\w)[*_](.+?)[*_](?!\w)", re.DOTALL)
 _CODE = re.compile(r"`+([^`]+)`+")
 
 
+# She appends this when the conversation has reached its natural end. A marker
+# rides the token stream where a structured field would fight it, and judging
+# the ending from context beats matching words: "I told him goodbye" is not a
+# farewell, and "right, I'm off then" is.
+_FAREWELL = re.compile(r"\s*\[\s*end\s*\]\s*$", re.IGNORECASE)
+
+
+def farewell_marked(reply: str) -> bool:
+    """True when she has signalled that the conversation is over."""
+    return _FAREWELL.search(reply) is not None
+
+
+def strip_farewell(reply: str) -> str:
+    """Remove the marker; it is never spoken and never shown."""
+    return _FAREWELL.sub("", reply).strip()
+
+
 def for_speech(text: str) -> str:
     """Return `text` with anything that would be mispronounced removed."""
-    cleaned = _EMOJI.sub("", text)
+    cleaned = strip_farewell(text)
+    cleaned = _EMOJI.sub("", cleaned)
     # A spoken URL should be the site, not a spelled-out address.
     cleaned = _URL.sub(r"\1", cleaned)
     cleaned = _CODE.sub(r"\1", cleaned)

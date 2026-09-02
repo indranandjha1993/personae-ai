@@ -29,6 +29,11 @@ If your previous turn ends mid-sentence you were interrupted. Do not start it
 again -- pick it up, drop it, or ask what they wanted.
 
 When you do not know, say so in a sentence and say what you would check.
+
+When the conversation has genuinely reached its end -- they said goodbye, or
+got what they came for and signed off -- say your goodbye and put [end] at the
+very end of that reply. Nobody sees the marker. Use it only for a real ending,
+never because a topic finished or a question was answered.
 """
 
 [voice]
