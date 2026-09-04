@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { blendPoses, GESTURE_NAMES, REST, toBodyPose } from './gestures'
+import { ATTEND, blendPoses, GESTURE_NAMES, REST, toBodyPose } from './gestures'
 
 describe('the gesture vocabulary', () => {
   it('falls back to rest for a gesture it does not know', () => {
@@ -81,5 +81,17 @@ describe('everyday motions', () => {
     expect(pose.left.upperForward).toBe(pose.right.upperForward)
     expect(pose.left.elbow).toBe(pose.right.elbow)
     expect(pose.headTilt).toBeGreaterThan(0)
+  })
+})
+
+describe('the pose between gestures', () => {
+  it('waits with the hands up rather than dropping them to the sides', () => {
+    // Hands that fall to rest after every line make the pauses look switched off.
+    expect(ATTEND.left.elbow).toBeGreaterThan(REST.left.elbow)
+    expect(ATTEND.right.upperForward).toBeGreaterThan(REST.right.upperForward)
+  })
+
+  it('is not quite symmetric', () => {
+    expect(ATTEND.left).not.toEqual(ATTEND.right)
   })
 })

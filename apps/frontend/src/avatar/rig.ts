@@ -134,5 +134,18 @@ export function applyMotion(vrm: VRM, motion: Motion, seconds: number): void {
   }
 }
 
+/**
+ * A beat: the small flick of the leading hand on a stressed word while a
+ * gesture is held. Additive, on top of the pose, and gone within a quarter
+ * of a second.
+ */
+export function applyBeat(vrm: VRM, amount: number): void {
+  if (amount <= 0) return
+  const forearm = vrm.humanoid.getNormalizedBoneNode('rightLowerArm')
+  if (forearm) forearm.rotation.y += amount * 0.09
+  const hand = vrm.humanoid.getNormalizedBoneNode('rightHand')
+  if (hand) hand.rotation.z += amount * 0.14
+}
+
 /** The roll that returns this model's arms to its sides, for callers that need it. */
 export { ARM_DOWN_ROLL }

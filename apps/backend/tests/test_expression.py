@@ -1,6 +1,6 @@
 """Expression inference must produce varied, always-valid cues."""
 
-from personae.expression import infer
+from personae.expression import infer, pace
 from personae.packs.loader import load_packs
 from personae.packs.models import Character
 
@@ -97,3 +97,49 @@ def test_hints_match_whole_words_only() -> None:
 def test_a_real_laugh_still_reads_as_amused() -> None:
     character = _character()
     assert infer("Ha! That is a good joke.", character)[1] == "amused"
+
+
+LONG = "Another thought about the engine follows on from the last one."
+
+
+def test_guessed_gestures_come_every_other_sentence() -> None:
+    """People gesture on the clause that carries the weight, not on every line."""
+    character = _character()
+    rest = character.expression.gestures[0]
+    assert infer(LONG, character, beat=0)[0] != rest
+    assert infer(LONG, character, beat=1)[0] == rest
+    assert infer(LONG, character, beat=2)[0] != rest
+
+
+def test_a_keyword_gesture_is_not_rationed() -> None:
+    """A goodbye waves whichever sentence it lands on."""
+    character = _character()
+    assert infer("Goodbye then, see you soon.", character, beat=1)[0] == "gesture-wave"
+
+
+def test_the_hands_rest_after_a_gesture_she_chose() -> None:
+    character = _character()
+    rest = character.expression.gestures[0]
+    assert infer(LONG, character, beat=2, after_mark=True)[0] == rest
+
+
+def test_a_chosen_gesture_colours_the_mood() -> None:
+    """A shrug is not a neutral face; the gesture says what the words do not."""
+    character = _character()
+    assert infer("I really do not know about it.", character, requested=["shrug"]) == (
+        "gesture-shrug",
+        "amused",
+    )
+
+
+def test_a_keyword_still_outranks_the_gesture_for_mood() -> None:
+    character = _character()
+    _, emotion = infer("Careful, watch the edge.", character, requested=["shrug"])
+    assert emotion == "alert"
+
+
+def test_pace_follows_mood() -> None:
+    assert pace("amused") > 1.0
+    assert pace("solemn") < 1.0
+    assert pace("neutral") == 1.0
+    assert pace("no-such-mood") == 1.0

@@ -37,14 +37,65 @@ _GESTURE_HINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("gesture-dismiss", ("no", "stop", "enough")),
 )
 
+# The mood a gesture usually carries. She marks the gesture herself, and what a
+# shrug or a hand on the chest means about her face follows from it more
+# reliably than from any word in the sentence.
+_GESTURE_EMOTIONS: dict[str, tuple[str, ...]] = {
+    "gesture-shrug": ("amused", "wry", "neutral"),
+    "gesture-sincere": ("focused", "solemn"),
+    "gesture-declaim": ("alert", "indignant", "focused"),
+    "gesture-wave": ("amused", "delighted"),
+    "gesture-welcome": ("amused", "delighted"),
+    "gesture-namaste": ("focused", "solemn"),
+    "gesture-consider": ("focused",),
+    "gesture-precise": ("focused",),
+    "gesture-explain": ("focused",),
+    "gesture-dismiss": ("wry", "unimpressed", "amused"),
+    "gesture-settle": ("focused", "solemn"),
+    "gesture-no": ("indignant", "alert"),
+    "gesture-yes": ("amused", "focused"),
+    "gesture-point": ("alert", "focused"),
+    "gesture-indicate": ("focused",),
+    "gesture-summon": ("amused", "alert"),
+}
 
-def infer(text: str, character: Character, requested: Sequence[str] = ()) -> tuple[str, str]:
+# How a mood changes her pace, as a multiplier on the character's own rate.
+# Small on purpose: a voice that lurches between speeds sounds edited, where
+# one that slows a little when serious sounds like a person.
+_EMOTION_PACE: dict[str, float] = {
+    "solemn": 0.94,
+    "unimpressed": 0.96,
+    "alert": 1.04,
+    "amused": 1.06,
+    "delighted": 1.08,
+    "impatient": 1.1,
+}
+
+
+def pace(emotion: str) -> float:
+    """The speaking-rate multiplier for a mood; 1.0 for anything unlisted."""
+    return _EMOTION_PACE.get(emotion, 1.0)
+
+
+def infer(
+    text: str,
+    character: Character,
+    requested: Sequence[str] = (),
+    beat: int = 0,
+    after_mark: bool = False,
+) -> tuple[str, str]:
     """Return a (gesture, emotion) pair valid for ``character``.
 
     A gesture the speaker asked for wins, since only she knows what she meant.
     Otherwise keyword hints are tried, and then the shape of the sentence:
     hints alone leave most real replies at rest, because a model rarely writes
     the exact words in the table.
+
+    ``beat`` is the sentence's position in the reply and ``after_mark`` whether
+    the previous sentence carried a gesture she chose. People gesture on the
+    clause that carries the weight, not on every line, so the guessed gesture
+    is only offered every other sentence and never straight after a chosen
+    one; the hands come back to rest between.
     """
     lowered = text.lower()
     gestures = character.expression.gestures
@@ -55,11 +106,13 @@ def infer(text: str, character: Character, requested: Sequence[str] = ()) -> tup
         if candidate in gestures:
             emotion = _first_match(lowered, _EMOTION_HINTS, emotions)
             if emotion == emotions[0]:
+                emotion = _prefer(_GESTURE_EMOTIONS.get(candidate, ()), emotions)
+            if emotion == emotions[0]:
                 emotion = _shape_emotion(text, emotions)
             return candidate, emotion
 
     gesture = _first_match(lowered, _GESTURE_HINTS, gestures)
-    if gesture == gestures[0]:
+    if gesture == gestures[0] and beat % 2 == 0 and not after_mark:
         gesture = _shape_gesture(text, gestures)
 
     emotion = _first_match(lowered, _EMOTION_HINTS, emotions)
@@ -104,7 +157,7 @@ def _shape_emotion(text: str, allowed: tuple[str, ...]) -> str:
     return _prefer(("focused", "alert", "wry", "amused"), allowed)
 
 
-def _prefer(candidates: tuple[str, ...], allowed: tuple[str, ...]) -> str:
+def _prefer(candidates: Sequence[str], allowed: tuple[str, ...]) -> str:
     """Pick the first candidate this character can actually perform."""
     for candidate in candidates:
         if candidate in allowed:

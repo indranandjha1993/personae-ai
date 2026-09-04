@@ -17,24 +17,29 @@ import { BlinkController } from './blink'
 import { EmphasisTracker } from './emphasis'
 import { LipSync } from './lip-sync'
 import { GazeController } from './gaze'
-import { blendPoses, REST, toBodyPose } from './gestures'
-import { applyBodyPose, applyMotion } from './rig'
+import { GesturePhaser } from './gesture-timing'
+import { ATTEND, blendPoses, REST, toBodyPose } from './gestures'
+import { ARM_BONES, loadMotions } from './motions'
+import { applyBeat, applyBodyPose, applyMotion } from './rig'
 import {
   ACTIVITY_POSE,
   toVrmEmotion,
   type Activity,
 } from './expression-map'
+import { browChannel, SURPRISED_PER_BROW, type BrowChannel } from './expression-support'
 
 const SMOOTHING = 9
 
-/**
- * How quickly a gesture reaches its pose.
- *
- * Slower than the head, which tracks the voice: an arm that snaps into
- * position reads as a cut rather than a movement. About a third of a second
- * from rest to a full gesture, which is roughly human.
- */
-const GESTURE_EASE = 3.2
+/** How long an authored clip takes to hand the arms back to the rig. */
+const CLIP_FADE_SECONDS = 0.3
+
+/** An authored clip in play, and where it is in handing the arms back. */
+interface ActiveClip {
+  action: THREE.AnimationAction
+  duration: number
+  /** Seconds into the fade-out; null while the clip still owns the arms. */
+  fading: number | null
+}
 
 /**
  * Skin tint, multiplied over the model's own texture.
@@ -111,6 +116,15 @@ export function Avatar({
   const focus = useRef(new THREE.Vector3())
   const lip = useRef(new LipSync())
   const emphasis = useRef(new EmphasisTracker())
+  const phaser = useRef(new GesturePhaser())
+  const brows = useRef<BrowChannel>({ mode: 'custom', missing: [] })
+  const mixer = useRef<THREE.AnimationMixer | null>(null)
+  const clips = useRef(new Map<string, THREE.AnimationClip>())
+  const active = useRef<ActiveClip | null>(null)
+  const armBones = useRef<THREE.Object3D[]>([])
+  // Where a clip put each arm bone this frame, so the rig's pose can be
+  // blended toward it rather than overwriting it.
+  const clipPose = useRef(new Map<THREE.Object3D, THREE.Quaternion>())
 
   useEffect(() => {
     let cancelled = false
@@ -155,6 +169,27 @@ export function Avatar({
         // The head bone sits at the base of the skull; the crown, hair
         // included, is the box top -- framing from the bone crops the head.
         onFramed({ headY, topY: box.max.y, height: box.max.y - box.min.y })
+
+        // A weight set on an expression the model lacks is ignored without
+        // a word; find out now which channels are real.
+        const manager = loaded.expressionManager
+        brows.current = browChannel((name) => manager?.getExpression(name) != null)
+        if (brows.current.missing.length > 0) {
+          console.warn(
+            `avatar: model has no ${brows.current.missing.join(', ')}; ` +
+              'brow accents will ride the surprised preset instead',
+          )
+        }
+
+        armBones.current = ARM_BONES.flatMap((bone) => {
+          const node = loaded.humanoid.getNormalizedBoneNode(bone)
+          return node ? [node] : []
+        })
+        mixer.current = new THREE.AnimationMixer(loaded.scene)
+        void loadMotions(loaded).then((found) => {
+          if (!cancelled) clips.current = found
+        })
+
         setVrm(loaded)
       },
       () => {
@@ -173,6 +208,41 @@ export function Avatar({
     }
   }, [vrm])
 
+  /** Start the authored clip for a gesture, or begin handing the arms back. */
+  const playClip = (name: string): void => {
+    const player = mixer.current
+    const clip = clips.current.get(name)
+    if (!player || !clip) {
+      if (active.current && active.current.fading === null) active.current.fading = 0
+      return
+    }
+    if (active.current) active.current.action.stop()
+    const action = player.clipAction(clip)
+    action.reset()
+    action.setLoop(THREE.LoopOnce, 1)
+    // Held on its last frame while the rig eases back in underneath it.
+    action.clampWhenFinished = true
+    action.play()
+    active.current = { action, duration: clip.duration, fading: null }
+  }
+
+  /** How much of the arms a clip owns this frame, 0 to 1, advancing its fade. */
+  const clipWeight = (delta: number): number => {
+    const current = active.current
+    if (!current) return 0
+    if (current.fading === null) {
+      if (current.action.time < current.duration - 1e-3) return 1
+      current.fading = 0
+    }
+    current.fading += delta
+    const weight = 1 - Math.min(1, current.fading / CLIP_FADE_SECONDS)
+    if (weight <= 0) {
+      current.action.stop()
+      active.current = null
+    }
+    return weight
+  }
+
   // useFrame runs on the render loop, outside React's render phase, so mutating
   // the scene graph here is the intended pattern rather than a violation.
   /* eslint-disable react-hooks/immutability */
@@ -180,33 +250,67 @@ export function Avatar({
     if (!vrm) return
     clock.current += delta
 
-    // The pose eases toward the gesture rather than snapping: a hand that
-    // arrives instantly reads as a cut, not a movement.
-    const wanted = toBodyPose(gesture)
-    // A motion plays from the moment its gesture lands, so the clock restarts
-    // on every change rather than running from page load.
-    if (gesture !== lastGesture.current) {
-      lastGesture.current = gesture
-      motionClock.current = 0
-    }
-    motionClock.current += delta
-    posed.current = blendPoses(posed.current, wanted, Math.min(1, delta * GESTURE_EASE))
-    applyBodyPose(vrm, posed.current)
-    const target = { headTilt: posed.current.headTilt, torsoTwist: posed.current.torsoTwist }
     const s = state.current
     const damp = THREE.MathUtils.damp
     const vrmEmotion = toVrmEmotion(emotion)
     const pose = ACTIVITY_POSE[activity]
     const lift = EMOTION_POSTURE[vrmEmotion] ?? 0
+    const speaking = activity === 'speaking'
 
-    // One analyser read per frame, shared by the mouth and the accent tracker.
+    // One analyser read per frame, shared by the mouth, the accent tracker
+    // and the gesture's timing.
     const voice = features()
     const mouth = lip.current.update(voice, delta)
-    const accent = emphasis.current.update(voice.rms, delta, activity === 'speaking')
+    const accent = emphasis.current.update(voice.rms, delta, speaking)
     blink.current.onPause(lip.current.pauseSeconds)
 
-    s.headTilt = damp(s.headTilt, target.headTilt, SMOOTHING, delta)
-    s.torsoTwist = damp(s.torsoTwist, target.torsoTwist, SMOOTHING, delta)
+    // A gesture is cued per sentence. Its stroke waits for the voice to
+    // stress a word, and a motion or clip plays from the moment it lands, so
+    // the clocks restart on every change rather than running from page load.
+    const wanted = toBodyPose(gesture)
+    if (gesture !== lastGesture.current) {
+      lastGesture.current = gesture
+      motionClock.current = 0
+      if (gesture === 'idle') phaser.current.release()
+      else phaser.current.begin()
+      playClip(gesture)
+    }
+    motionClock.current += delta
+    const timing = phaser.current.update(delta, accent.accent)
+
+    // Between gestures the hands wait up, not down, for as long as she is
+    // talking; only silence brings them to rest.
+    const base = speaking ? ATTEND : REST
+    const target = gesture === 'idle' ? base : blendPoses(base, wanted, timing.amount)
+    posed.current = blendPoses(posed.current, target, Math.min(1, delta * timing.ease))
+
+    // An authored clip, where one exists, moves the arms; the rig's pose is
+    // blended toward it by the clip's weight so the handover is a crossfade
+    // rather than a cut. The mixer runs first so its result can be read.
+    const player = mixer.current
+    const owned = player ? clipWeight(delta) : 0
+    if (player && owned > 0) {
+      player.update(delta)
+      for (const bone of armBones.current) {
+        const saved = clipPose.current.get(bone) ?? new THREE.Quaternion()
+        saved.copy(bone.quaternion)
+        clipPose.current.set(bone, saved)
+      }
+    }
+    applyBodyPose(vrm, posed.current)
+    if (owned > 0) {
+      for (const bone of armBones.current) {
+        const saved = clipPose.current.get(bone)
+        if (saved) bone.quaternion.slerp(saved, owned)
+      }
+    } else {
+      applyBeat(vrm, timing.beat)
+    }
+
+    const headTarget = { headTilt: posed.current.headTilt, torsoTwist: posed.current.torsoTwist }
+
+    s.headTilt = damp(s.headTilt, headTarget.headTilt, SMOOTHING, delta)
+    s.torsoTwist = damp(s.torsoTwist, headTarget.torsoTwist, SMOOTHING, delta)
     // The mouth tracks loudness faster than the body, or speech looks dubbed.
     s.pitch = damp(s.pitch, pose.headPitch, SMOOTHING * 0.55, delta)
     s.yaw = damp(s.yaw, pose.headYaw, SMOOTHING * 0.55, delta)
@@ -259,8 +363,15 @@ export function Avatar({
       // only the brow and mouth and can run stronger.
       const closesEyes = vrmEmotion === 'happy' || vrmEmotion === 'relaxed'
       const emotionWeight = closesEyes ? 0.3 : 0.6
+      // On a model without brow expressions, an accent lifts the brows
+      // through 'surprised' instead -- the one preset that raises them.
+      const browLift =
+        brows.current.mode === 'surprised'
+          ? Math.max(accent.browLeft, accent.browRight) * SURPRISED_PER_BROW
+          : 0
       for (const preset of ['happy', 'angry', 'sad', 'relaxed', 'surprised'] as const) {
-        expressions.setValue(preset, preset === vrmEmotion ? emotionWeight : 0)
+        const weight = preset === vrmEmotion ? emotionWeight : 0
+        expressions.setValue(preset, preset === 'surprised' ? Math.max(weight, browLift) : weight)
       }
 
       // An expression that already narrows the eyes shortens the blink rather
@@ -271,8 +382,10 @@ export function Avatar({
 
       // Brows move unevenly on stressed words; a face that raises both by the
       // same amount reads as a mask.
-      expressions.setValue('eye_brow_up_L', accent.browLeft)
-      expressions.setValue('eye_brow_up_R', accent.browRight)
+      if (brows.current.mode === 'custom') {
+        expressions.setValue('eye_brow_up_L', accent.browLeft)
+        expressions.setValue('eye_brow_up_R', accent.browRight)
+      }
     }
 
     // Gaze last, before the update that applies it. Pointing lookAt at the

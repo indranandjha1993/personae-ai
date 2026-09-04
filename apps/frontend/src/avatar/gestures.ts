@@ -91,6 +91,18 @@ function body(overrides: Partial<BodyPose>): BodyPose {
 }
 
 /**
+ * Hands at ease while she is talking: loosely in front, not hanging.
+ *
+ * Between gestures a speaker's hands do not drop to the sides; they wait
+ * where the next gesture starts from. Coming all the way down to rest after
+ * every line is what makes the pauses look switched off.
+ */
+export const ATTEND: BodyPose = body({
+  left: arm({ upperForward: 0.22, upperOut: 0.02, elbow: 0.85, wrist: -0.1, curl: 0.25, spread: 0.15 }),
+  right: arm({ upperForward: 0.24, upperOut: 0.03, elbow: 0.9, wrist: -0.08, curl: 0.22, spread: 0.15 }),
+})
+
+/**
  * The gesture vocabulary.
  *
  * Each is built around one dominant hand, with the other doing less: matched
