@@ -404,7 +404,7 @@ class LiveSession:
             # The provider said why it refused; an expired credential or a
             # rejected request is worth repeating rather than hiding behind
             # a generic failure the listener can do nothing about.
-            logger.warning("the model refused the turn: %s", error)
+            logger.warning("a provider refused the turn: %s", error)
             await outbound.put(ServerMessage.error(str(error)))
         except Exception:
             # One upstream hiccup ends a turn, not the conversation.

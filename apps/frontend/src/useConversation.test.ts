@@ -76,6 +76,23 @@ async function started() {
   return hook
 }
 
+describe('a failed turn', () => {
+  it('reports the failure and keeps listening', async () => {
+    // A provider refusing one turn is not the conversation ending; tearing
+    // the session down turned every transient into a dead call.
+    const { result } = await started()
+
+    act(() => { deliver({ type: 'transcript', text: 'Hello' }) })
+    act(() => { deliver({ type: 'error', detail: 'the voice failed' }) })
+
+    expect(result.current.status).toBe('listening')
+    expect(result.current.detail).toBe('the voice failed')
+
+    act(() => { deliver({ type: 'transcript', text: 'Again' }) })
+    expect(result.current.detail).toBe('')
+  })
+})
+
 describe('ending a turn', () => {
   it('does not sit on "thinking" when the reply carries no audio', async () => {
     // Muted voice, a synthesis failure, an empty reply: the turn is still over

@@ -244,10 +244,11 @@ class SpeakConnection:
     """A synthesis socket that answers each Speak with a scripted turn.
 
     Audio for a sentence is its own bytes cut into pieces, so a test can tell
-    which sentence a chunk belonged to.
+    which sentence a chunk belonged to. ``fail`` is how many Speaks in a row
+    the server answers with an error.
     """
 
-    def __init__(self, fail: bool = False) -> None:
+    def __init__(self, fail: int = 0) -> None:
         self.spoken: list[str] = []
         self.speeds: list[float | None] = []
         self.interrupts = 0
@@ -258,8 +259,9 @@ class SpeakConnection:
     async def send_speak(self, message: Any) -> None:
         self.spoken.append(message.text)
         self._events.put_nowait(Event("SpeechStarted", speech_id="dg_sp_1"))
-        if self._fail:
-            self._events.put_nowait(Event("Error", code="DATA-0000", description="bad text"))
+        if self._fail > 0:
+            self._fail -= 1
+            self._events.put_nowait(Event("Error", code="NET-0000", description="internal error"))
             return
         text = message.text.encode()
         for start in range(0, len(text), 4):
@@ -386,13 +388,29 @@ async def test_a_synthesis_error_is_reported_as_a_provider_error(
 ) -> None:
     from personae.providers.base import ProviderError
 
-    connection = SpeakConnection(fail=True)
+    connection = SpeakConnection(fail=2)
     tts = FluxTts(api_key="x")
     monkeypatch.setattr(tts, "_client", _speak_client(connection))
     speaker = await tts.open("flux-haley-en", 1.0)
 
-    with pytest.raises(ProviderError, match="bad text"):
+    with pytest.raises(ProviderError, match="internal error"):
         await _said(speaker, "Hello.")
+
+
+@pytest.mark.timeout(10)
+async def test_a_line_the_server_fails_once_is_said_again_on_a_new_socket(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A transient error on one line is the server's problem, not the
+    listener's: the socket is replaced and the line said again."""
+    connection = SpeakConnection(fail=1)
+    tts = FluxTts(api_key="x")
+    client = _speak_client(connection)
+    monkeypatch.setattr(tts, "_client", client)
+    speaker = await tts.open("flux-haley-en", 1.0)
+
+    assert (await _said(speaker, "Hello.")).strip() == b"Hello."
+    assert client.speak.v2.connects == 2
 
 
 @pytest.mark.timeout(10)

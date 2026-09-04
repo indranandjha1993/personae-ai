@@ -274,11 +274,14 @@ class FluxSpeaker:
                 await self._begin(connection, text, rate)
 
             finished = False
+            heard_any = False
+            retried = False
             try:
                 while True:
                     event = await connection.recv()
                     if isinstance(event, bytes | bytearray):
                         if event:
+                            heard_any = True
                             yield bytes(event)
                         continue
                     kind = getattr(event, "type", None)
@@ -287,9 +290,20 @@ class FluxSpeaker:
                         finished = True
                         return
                     if kind == "Error":
-                        raise ProviderError(
-                            str(getattr(event, "description", "speech synthesis failed"))
+                        # The server gave up on this line. A socket that has
+                        # errored is not trusted again; if nothing of the line
+                        # was heard yet it is said once more on a fresh one.
+                        description = str(getattr(event, "description", "speech synthesis failed"))
+                        await self.close()
+                        if heard_any or retried:
+                            raise ProviderError(f"the voice failed: {description}")
+                        logger.warning(
+                            "the voice failed (%s); retrying on a new socket", description
                         )
+                        retried = True
+                        connection = await self._ready()
+                        await self._begin(connection, text, rate)
+                        continue
                     if kind == "Warning":
                         logger.warning("flux tts: %s", getattr(event, "description", event))
             finally:

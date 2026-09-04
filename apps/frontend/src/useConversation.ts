@@ -148,6 +148,7 @@ export function useConversation(characterId: string): Conversation {
           case 'transcript':
             suppressing.current = false
             setTranscript(message.text)
+            setDetail('')
             // A new turn starts with nothing said yet.
             setReply('')
             setSpokenSoFar('')
@@ -241,9 +242,12 @@ export function useConversation(characterId: string): Conversation {
             break
           }
           case 'error':
+            // One failed turn, reported by the server; the conversation goes
+            // on. A connection that has actually died arrives as a close.
             setDetail(message.detail)
-            teardown()
-            setStatus('error')
+            playerRef.current?.stop()
+            spokenRef.current = false
+            setStatus('listening')
             break
           case 'done':
             setTurnFinished(true)
