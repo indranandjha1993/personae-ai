@@ -49,7 +49,7 @@ holding paid credentials cannot really be contributed to.
 |---|---|
 | Backend | Python 3.13, FastAPI, WebSockets, `uv` |
 | Speech | Deepgram Flux streaming STT + TTS (async SDK) |
-| Language model | Any OpenAI-compatible endpoint |
+| Language model | Any OpenAI- or Anthropic-compatible endpoint, hosted or local |
 | Frontend | React 19, TypeScript, Vite |
 | Audio | Web Audio API — AudioWorklet capture, clock-scheduled playback |
 | Quality | Ruff, mypy (strict), pytest, Vitest, ESLint |
@@ -120,9 +120,10 @@ the reverse, without setting anything else. A key with no endpoint fails at star
 what is missing, rather than quietly falling back.
 
 A model running on your own machine works as well as a hosted one -- LM Studio,
-Ollama and llama.cpp all speak the OpenAI wire. Point `PERSONAE_LLM_BASE_URL` at
-it and give any value for the key, since the app treats an empty key as "no
-model configured" while local servers rarely check it.
+Ollama and llama.cpp all speak the OpenAI wire, and LM Studio speaks the
+Anthropic one too. Point `PERSONAE_LLM_BASE_URL` at it and give any value for
+the key, since the app treats an empty key as "no model configured" while
+local servers rarely check it.
 
 Under Docker, `localhost` inside the container is the container, so the host is
 reached by name instead:
@@ -138,11 +139,35 @@ loopback and the container cannot see it. Smaller models answer noticeably
 faster, which matters more here than it would in a chat window: every second
 before the first word is a second of silence in a conversation.
 
+Three LM Studio settings matter for a conversation. Keep the model's
+*thinking* mode off: reasoning before the first token is silence before the
+first word. Try *speculative decoding* with a small draft model from
+the same family (a Qwen3.5 0.8B under a Qwen3.5 9B, say): on a laptop it can
+lift the token rate, which is what bounds how quickly each sentence is ready
+to speak, though the gain on conversational text is smaller than on code, so
+measure it. And load a vision-capable model with `PERSONAE_LLM_WIRE=anthropic`
+if you want the camera: LM Studio's `/v1/messages` carries the picture.
+
 Speech runs on Flux, Deepgram's voice-agent line: it judges when a turn has
 ended from the words themselves rather than from a fixed silence, which is both
 quicker and harder to fool than timing a pause. `PERSONAE_EOT_THRESHOLD` is the
 one worth tuning — raise it and she waits longer but clips fewer words off the
-end of your sentence.
+end of your sentence. Flux also says when a turn has *probably* ended, a beat
+before it is sure; set `PERSONAE_EAGER_EOT_THRESHOLD` and she drafts her
+answer from that moment, throwing it away if you carry on. Leave it off with a
+local model: it fires on a breath between words, and a local server keeps
+generating an abandoned draft after the request is dropped, so the real reply
+waits behind it. A hosted model that cancels cleanly gains a beat on every turn.
+
+The recogniser is told to expect the character's name and anything in the
+pack's `keyterms`, which is what stops "Wren" arriving as "Ren" or "Ryan".
+Each turn is logged with how it ended and how loud the input was, so a quiet
+microphone or a noisy room shows up in `docker compose logs backend` rather
+than as her not listening.
+
+Her voice is one socket held open for the whole conversation, and every
+sentence is a turn on it: connecting costs more than a sentence does, so it
+happens once rather than before each line.
 
 Flux speaks English only. For anything else set `PERSONAE_STT_LANGUAGE` with a
 `nova` model and a matching `aura-2` voice: Deepgram transcribes over a hundred
@@ -181,13 +206,15 @@ same-origin, so there is no CORS to configure.
 ```bash
 docker compose ps                  # what is running, and whether it is healthy
 docker compose logs -f backend     # follow the conversation logs
-docker compose restart backend     # after changing .env
+docker compose up -d backend       # after changing .env
 docker compose up -d --build       # after changing code
 docker compose down                # stop everything
 ```
 
-Changing `.env` needs a restart rather than a rebuild: it is mounted, not
-copied. Changing code needs a rebuild.
+Changing `.env` needs the container *recreated*, not restarted: compose
+copies the values into the container's environment when it creates it, and
+`restart` reuses that container with the environment it already has.
+Changing code needs a rebuild.
 
 ### Publishing elsewhere
 
@@ -208,9 +235,9 @@ PERSONAE_LLM_MODEL=nvidia/nemotron-3-nano-4b
 ```
 
 LM Studio also needs "Serve on Local Network" enabled, or it binds to loopback
-and the container cannot see it. Note that vision needs the Anthropic wire, so
-the camera goes quiet against an OpenAI-compatible local server; voice is
-unaffected.
+and the container cannot see it. Vision needs the Anthropic wire: set
+`PERSONAE_LLM_WIRE=anthropic` and load a vision-capable model, and the camera
+works locally; on the OpenAI wire it goes quiet and voice is unaffected.
 
 ### If something is wrong
 
@@ -218,18 +245,29 @@ unaffected.
 `docker compose ps`, then `docker compose logs backend` — a missing or wrong
 credential is reported at startup, naming the variable.
 
+**She cuts you off, or waits too long.** Every turn is logged with how it
+ended: `ended by model at 0.86` is the recogniser deciding you had finished,
+`ended by timeout` is the pause limit. Raise `PERSONAE_EOT_THRESHOLD` if she
+jumps in on your pauses; lower it if she waits too long after you stop.
+`input peak` on the same line is how loud you reached her.
+
 **The websocket closes as soon as it opens.** Almost always a proxy in front of
 this one that is not passing `Upgrade` and `Connection` headers.
 
-**Changes to `.env` did nothing.** It is read when the container starts:
-`docker compose restart backend`.
+**Changes to `.env` did nothing.** It is copied in when the container is
+created: `docker compose up -d backend`. A restart is not enough -- it brings
+the same container back with the environment it already had.
 
 ## Live conversation
 
 The microphone stays open. The model decides when you have stopped speaking, so nothing is
-held down, and talking over a reply cuts it short — input counts as speech only while she is
-actually speaking and only when it is clearly louder than what is playing, so the reply
-leaking back through the microphone does not interrupt her.
+held down, and it is patient by default: it waits until it is sure you have finished, and
+lets a pause of several seconds go by mid-thought before taking the turn. Talking over a
+reply cuts it short: the recogniser is read the whole time she is speaking, so your words
+stop her on the server, and a fragment made only of words she has just said is taken to be
+her own voice coming back through the microphone rather than you. The browser also stops
+playback locally as soon as it hears a voice over hers. Echo cancellation is on; a headset
+makes all of this cleaner.
 
 Switch the camera on and a still from the moment you spoke is attached to that turn, so she
 can answer questions about what is in front of you. This needs a language endpoint that
@@ -243,6 +281,26 @@ never refers to words you did not hear. History is a bounded window of recent tu
 Characters are rendered as 3D [VRM](https://vrm.dev/) models. Gestures drive arm, head, and
 torso poses; emotions map onto VRM expression presets; and the mouth follows the loudness of
 the audio being played, so speech stays in sync by construction rather than by timing.
+
+A gesture is timed as well as posed: the hands prepare, strike on the first word her
+voice stresses, hold, and beat on later stresses, and between gestures they wait up
+rather than dropping to her sides. Where a model lacks the brow expressions the accents
+are drawn with, they ride the `surprised` preset instead, and the console says so once.
+
+### Authored motion
+
+A held pose can put a hand where a wave belongs; it cannot make the wave. Drop
+[VRM Animation](https://vrm.dev/en/vrma/) clips in `apps/frontend/public/motions/`
+and list them in `index.json` there, keyed by gesture:
+
+```json
+{ "gesture-wave": "wave.vrma", "gesture-namaste": "namaste.vrma" }
+```
+
+A clip drives only the arms and hands; the head, breath and face stay procedural.
+Any gesture without a clip stays procedural too. Clips are not committed -- they carry
+their own licences; the [VRoid Project](https://vroid.com/en/news/6HozzBIV0KkcKf9dc1fZGW)
+publishes a free set that includes a greeting.
 
 **No model ships with the project.** VRM files are large and carry their own licences, so
 supply one yourself:
