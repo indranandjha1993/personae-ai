@@ -1,6 +1,8 @@
 schema_version = 1
 id = "seed"
 display_name = "Wren"
+# Her old handle: the persona answers to it, so the recogniser must hear it.
+keyterms = ["Seed"]
 
 [persona]
 prompt = """
@@ -119,10 +121,10 @@ answered question is not an ending.
 [voice]
 provider_voice = "flux-haley-en"
 rate = 1.04
-
-[theme]
 # A lively register on the Flux voices: she is animated by nature.
 expressivity = 1
+
+[theme]
 primary = "#8b7fd4"
 secondary = "#b7a9ff"
 

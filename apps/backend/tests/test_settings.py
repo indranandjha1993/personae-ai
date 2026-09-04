@@ -47,3 +47,35 @@ def test_finds_the_repository_env_file_from_any_working_directory(
     monkeypatch.chdir(tmp_path)
     assert env_file_path().name == ".env"
     assert env_file_path().is_absolute()
+
+
+def test_eager_end_of_turn_is_off_by_default() -> None:
+    """It fires on a breath between words, and a local model keeps generating
+    the abandoned draft while the real reply waits behind it."""
+    assert Settings().eager_eot_threshold is None
+
+
+def test_eager_end_of_turn_can_be_switched_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PERSONAE_EAGER_EOT_THRESHOLD", "0.4")
+    assert Settings().eager_eot_threshold == 0.4
+
+
+def test_turn_detection_is_patient_by_default() -> None:
+    """A lower threshold splits a sentence at every pause for thought; being
+    talked over is worse than waiting."""
+    assert Settings().eot_threshold == 0.85
+    assert Settings().eot_timeout_ms == 8_000
+
+
+def test_an_eager_threshold_above_the_final_one_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PERSONAE_EOT_THRESHOLD", "0.7")
+    monkeypatch.setenv("PERSONAE_EAGER_EOT_THRESHOLD", "0.8")
+    with pytest.raises(ValueError, match="EAGER_EOT_THRESHOLD"):
+        Settings()
+
+
+def test_eager_end_of_turn_can_be_switched_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PERSONAE_EAGER_EOT_THRESHOLD", "")
+    assert Settings().eager_eot_threshold is None

@@ -8,7 +8,7 @@ from personae.conversation import Message
 from personae.live import LiveSession
 from personae.packs.loader import load_packs
 from personae.protocol import ServerMessage
-from personae.providers.base import Heard
+from personae.providers.base import Heard, Speaker, SynthesizingSpeaker
 
 
 class RecordingTts:
@@ -16,6 +16,9 @@ class RecordingTts:
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, float]] = []
+
+    async def open(self, voice: str, rate: float = 1.0, expressivity: int | None = None) -> Speaker:
+        return SynthesizingSpeaker(self.synthesize, voice, rate)
 
     def synthesize(self, text: str, voice: str, rate: float = 1.0) -> AsyncIterator[bytes]:
         self.calls.append((text, voice, rate))
@@ -27,7 +30,9 @@ class RecordingTts:
 
 
 class StubStt:
-    def transcribe(self, audio: AsyncIterator[bytes]) -> AsyncIterator[Heard]:
+    def transcribe(
+        self, audio: AsyncIterator[bytes], keyterms: Sequence[str] = ()
+    ) -> AsyncIterator[Heard]:
         async def once() -> AsyncIterator[Heard]:
             async for _ in audio:
                 break

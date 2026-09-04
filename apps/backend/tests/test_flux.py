@@ -145,6 +145,92 @@ def test_the_nova_and_aura_clients_are_still_reachable(
     assert isinstance(build_tts(Settings()), DeepgramTts)
 
 
+class Connection:
+    """Replays scripted turns and records the connect options that reached it."""
+
+    def __init__(self, events: list[Turn]) -> None:
+        self._events = events
+        self.options: dict[str, object] = {}
+
+    async def send_media(self, chunk: bytes) -> None:
+        return None
+
+    async def send_close_stream(self) -> None:
+        return None
+
+    def __aiter__(self) -> AsyncIterator[Turn]:
+        async def gen() -> AsyncIterator[Turn]:
+            for event in self._events:
+                yield event
+
+        return gen()
+
+
+def _client_recording(connection: Connection) -> Any:
+    import contextlib
+
+    class Listen:
+        class V2:
+            @staticmethod
+            @contextlib.asynccontextmanager
+            async def connect(**options: object) -> AsyncIterator[Connection]:
+                connection.options = options
+                yield connection
+
+        v2 = V2()
+
+    class Client:
+        listen = Listen()
+
+    return Client()
+
+
+@pytest.mark.timeout(10)
+async def test_a_probable_ending_is_reported_and_may_be_retracted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Flux says 'probably done' before 'done'; both reach the session, as
+    does the retraction when the speaker carries on."""
+    connection = Connection(
+        [
+            Turn("Update", "Hello"),
+            Turn("EagerEndOfTurn", "Hello there"),
+            Turn("TurnResumed", "Hello there and"),
+            Turn("EndOfTurn", "Hello there and goodbye"),
+        ]
+    )
+    stt = FluxStt(api_key="x", eager_eot_threshold=0.4)
+    monkeypatch.setattr(stt, "_client", _client_recording(connection))
+
+    async def audio() -> AsyncIterator[bytes]:
+        yield b"\x00\x01"
+
+    heard = [item async for item in stt.transcribe(audio())]
+
+    assert [(h.text, h.final, h.eager, h.resumed) for h in heard] == [
+        ("Hello", False, False, False),
+        ("Hello there", False, True, False),
+        ("Hello there and", False, False, True),
+        ("Hello there and goodbye", True, False, False),
+    ]
+    assert connection.options["eager_eot_threshold"] == 0.4
+
+
+@pytest.mark.timeout(10)
+async def test_eager_detection_is_left_off_unless_asked_for(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connection = Connection([Turn("EndOfTurn", "hi")])
+    stt = FluxStt(api_key="x")
+    monkeypatch.setattr(stt, "_client", _client_recording(connection))
+
+    async def audio() -> AsyncIterator[bytes]:
+        yield b"\x00\x01"
+
+    [item async for item in stt.transcribe(audio())]
+    assert connection.options.get("eager_eot_threshold") is None
+
+
 class Event:
     """One control message off the synthesis socket."""
 
@@ -321,6 +407,56 @@ async def test_each_sentence_is_sent_visibly_complete(monkeypatch: pytest.Monkey
     await _said(speaker, "Hello there.")
 
     assert connection.spoken == ["Hello there. "]
+
+
+@pytest.mark.timeout(10)
+async def test_keyterms_reach_the_socket(monkeypatch: pytest.MonkeyPatch) -> None:
+    connection = Connection([Turn("EndOfTurn", "hey wren")])
+    stt = FluxStt(api_key="x")
+    monkeypatch.setattr(stt, "_client", _client_recording(connection))
+
+    async def audio() -> AsyncIterator[bytes]:
+        yield b"\x00\x01"
+
+    [item async for item in stt.transcribe(audio(), ("Wren", "Seed"))]
+    assert connection.options["keyterm"] == ["Wren", "Seed"]
+
+
+@pytest.mark.timeout(10)
+async def test_no_keyterms_sends_none_rather_than_an_empty_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connection = Connection([Turn("EndOfTurn", "hi")])
+    stt = FluxStt(api_key="x")
+    monkeypatch.setattr(stt, "_client", _client_recording(connection))
+
+    async def audio() -> AsyncIterator[bytes]:
+        yield b"\x00\x01"
+
+    [item async for item in stt.transcribe(audio())]
+    assert connection.options["keyterm"] is None
+
+
+@pytest.mark.timeout(10)
+async def test_a_quiet_turn_is_called_out(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A recogniser that hears nothing and one that is sent nothing look the
+    same from outside; the log is what tells them apart."""
+    import logging
+
+    connection = Connection([Turn("EndOfTurn", "hello")])
+    stt = FluxStt(api_key="x")
+    monkeypatch.setattr(stt, "_client", _client_recording(connection))
+
+    async def audio() -> AsyncIterator[bytes]:
+        yield b"\x01\x00" * 800  # near-silence
+
+    with caplog.at_level(logging.INFO, logger="personae.providers.flux"):
+        [item async for item in stt.transcribe(audio())]
+
+    assert any("very quiet" in record.message for record in caplog.records)
+    assert any(record.message.startswith("turn:") for record in caplog.records)
 
 
 class DroppingSpeakConnection(SpeakConnection):

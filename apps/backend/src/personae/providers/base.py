@@ -27,18 +27,29 @@ class Heard:
     ``final`` marks the end of a turn. Anything before it is provisional and
     may be revised by later words, but it is what lets the listener see
     themselves being heard as they speak rather than only afterwards.
+
+    ``eager`` is a turn that has probably ended, so a reply may be drafted
+    early; ``resumed`` retracts it, because the speaker carried on.
     """
 
     text: str
     final: bool
+    eager: bool = False
+    resumed: bool = False
 
 
 @runtime_checkable
 class SttProvider(Protocol):
     """Streaming speech-to-text."""
 
-    def transcribe(self, audio: AsyncIterator[bytes]) -> AsyncIterator[Heard]:
-        """Yield what has been heard, provisionally and then finally."""
+    def transcribe(
+        self, audio: AsyncIterator[bytes], keyterms: Sequence[str] = ()
+    ) -> AsyncIterator[Heard]:
+        """Yield what has been heard, provisionally and then finally.
+
+        ``keyterms`` are words the speaker is likely to say that the model
+        would otherwise mishear -- a character's name, above all.
+        """
         ...
 
 
@@ -62,13 +73,6 @@ class LlmProvider(Protocol):
 
 
 @runtime_checkable
-class TtsProvider(Protocol):
-    """Streaming text-to-speech."""
-
-    def synthesize(self, text: str, voice: str, rate: float = 1.0) -> AsyncIterator[bytes]:
-        """Yield PCM audio frames for ``text`` in ``voice`` at ``rate``."""
-        ...
-@runtime_checkable
 class Speaker(Protocol):
     """One voice, held open for the length of a conversation.
 
@@ -87,6 +91,13 @@ class Speaker(Protocol):
     async def close(self) -> None: ...
 
 
+@runtime_checkable
+class TtsProvider(Protocol):
+    """Streaming text-to-speech."""
+
+    def synthesize(self, text: str, voice: str, rate: float = 1.0) -> AsyncIterator[bytes]:
+        """Yield PCM audio frames for ``text`` in ``voice`` at ``rate``."""
+        ...
 
     async def open(self, voice: str, rate: float = 1.0, expressivity: int | None = None) -> Speaker:
         """Open a channel for a conversation in ``voice``."""

@@ -8,7 +8,7 @@ from personae.live import MAX_PENDING_AUDIO, LiveSession
 from personae.packs.loader import load_packs
 from personae.packs.models import Character
 from personae.protocol import ServerMessage
-from personae.providers.base import Heard
+from personae.providers.base import Heard, Speaker, SynthesizingSpeaker
 
 
 def _character() -> Character:
@@ -23,7 +23,9 @@ class ScriptedStt:
     def __init__(self, utterances: list[str]) -> None:
         self._utterances = utterances
 
-    def transcribe(self, audio: AsyncIterator[bytes]) -> AsyncIterator[Heard]:
+    def transcribe(
+        self, audio: AsyncIterator[bytes], keyterms: Sequence[str] = ()
+    ) -> AsyncIterator[Heard]:
         async def run() -> AsyncIterator[Heard]:
             index = 0
             async for _ in audio:
@@ -64,6 +66,9 @@ class SlowLlm:
 
 
 class SilentTts:
+    async def open(self, voice: str, rate: float = 1.0, expressivity: int | None = None) -> Speaker:
+        return SynthesizingSpeaker(self.synthesize, voice, rate)
+
     def synthesize(self, text: str, voice: str, rate: float = 1.0) -> AsyncIterator[bytes]:
         async def run() -> AsyncIterator[bytes]:
             for _ in range(10):
@@ -241,6 +246,11 @@ async def test_every_sentence_is_spoken() -> None:
     spoken: list[str] = []
 
     class RecordingTts:
+        async def open(
+            self, voice: str, rate: float = 1.0, expressivity: int | None = None
+        ) -> Speaker:
+            return SynthesizingSpeaker(self.synthesize, voice, rate)
+
         def synthesize(self, text: str, voice: str, rate: float = 1.0) -> AsyncIterator[bytes]:
             spoken.append(text)
 
@@ -358,3 +368,344 @@ async def test_a_reply_with_no_words_is_reported() -> None:
     messages = [m.model_dump() for m in await _drain(session)]
     assert any(m["type"] == "error" for m in messages)
     assert not any(m["type"] == "reply" for m in messages)
+
+
+class HeardStt:
+    """Replays scripted recogniser events, one per audio frame offered."""
+
+    def __init__(self, events: list[Heard], on_start: object = None, gap: float = 0.01) -> None:
+        self._events = events
+        self._on_start = on_start
+        self._gap = gap
+
+    def transcribe(
+        self, audio: AsyncIterator[bytes], keyterms: Sequence[str] = ()
+    ) -> AsyncIterator[Heard]:
+        async def run() -> AsyncIterator[Heard]:
+            # A real socket takes a moment to connect and spaces its events
+            # out in time; without the yields here nothing else gets to run.
+            await asyncio.sleep(0)
+            if callable(self._on_start):
+                self._on_start()
+            index = 0
+            async for _ in audio:
+                if index < len(self._events):
+                    yield self._events[index]
+                    index += 1
+                    await asyncio.sleep(self._gap)
+
+        return run()
+
+
+class EchoLlm:
+    """Answers with the words it was given, so the reply names its transcript."""
+
+    def __init__(self, delay: float = 0.0) -> None:
+        self.delay = delay
+        self.transcripts: list[str] = []
+
+    def respond(
+        self,
+        system_prompt: str,
+        transcript: str,
+        history: Sequence[Message] = (),
+        image: bytes | None = None,
+    ) -> AsyncIterator[str]:
+        self.transcripts.append(transcript)
+
+        async def run() -> AsyncIterator[str]:
+            await asyncio.sleep(self.delay)
+            yield f"You said {transcript}."
+
+        return run()
+
+
+class CountingTts:
+    """Counts connections and records every line said through them."""
+
+    def __init__(self) -> None:
+        self.opened = 0
+        self.said: list[tuple[str, float | None]] = []
+
+    async def open(self, voice: str, rate: float = 1.0, expressivity: int | None = None) -> Speaker:
+        self.opened += 1
+        recorder = self
+
+        class Held:
+            def say(self, text: str, rate: float | None = None) -> AsyncIterator[bytes]:
+                recorder.said.append((text, rate))
+
+                async def frames() -> AsyncIterator[bytes]:
+                    yield b"\x00\x00"
+
+                return frames()
+
+            async def close(self) -> None:
+                return None
+
+        return Held()
+
+    def synthesize(self, text: str, voice: str, rate: float = 1.0) -> AsyncIterator[bytes]:
+        async def frames() -> AsyncIterator[bytes]:
+            yield b"\x00\x00"
+
+        return frames()
+
+
+async def _offer_turns(session: LiveSession, turns: int) -> None:
+    for _ in range(turns):
+        await session.offer(b"\x10\x20" * 40)
+    await session.close_input()
+
+
+async def test_a_reply_drafted_on_a_probable_ending_is_sent_once_confirmed() -> None:
+    """The recogniser is fairly sure a beat before it is certain; answering
+    from that moment is where the last few hundred milliseconds go."""
+    llm = EchoLlm()
+    stt = HeardStt([Heard("hello", final=False, eager=True), Heard("hello", final=True)])
+    session = LiveSession(_character(), stt, llm, SilentTts())
+    await _offer_turns(session, 2)
+
+    messages = [m.model_dump() for m in await _drain(session)]
+    kinds = [m["type"] for m in messages]
+
+    assert llm.transcripts == ["hello"], "one answer, not one per signal"
+    # Nothing of the reply leaves before the turn is confirmed.
+    assert kinds.index("transcript") < kinds.index("audio")
+    assert [m["text"] for m in messages if m["type"] == "reply"] == ["You said hello."]
+
+
+async def test_a_draft_is_dropped_when_the_speaker_carries_on() -> None:
+    """A retracted ending means the draft answered half a sentence."""
+    llm = EchoLlm(delay=0.05)
+    stt = HeardStt(
+        [
+            Heard("hello", final=False, eager=True),
+            Heard("hello and", final=False, resumed=True),
+            Heard("hello and goodbye", final=True),
+        ]
+    )
+    session = LiveSession(_character(), stt, llm, SilentTts())
+    await _offer_turns(session, 3)
+
+    messages = [m.model_dump() for m in await _drain(session)]
+    replies = [m["text"] for m in messages if m["type"] == "reply"]
+
+    assert replies == ["You said hello and goodbye."]
+    assert "hello" in llm.transcripts, "the draft was attempted"
+
+
+async def test_the_voice_is_connected_once_for_the_whole_conversation() -> None:
+    """Connecting costs more than a sentence does; it happens once."""
+    tts = CountingTts()
+    llm = SlowLlm(["One thing. ", "Then another."], 0.0)
+    session = LiveSession(_character(), ScriptedStt(["a", "b"]), llm, tts)
+    await _offer_turns(session, 2)
+    await _drain(session)
+
+    assert tts.opened == 1
+    assert len(tts.said) == 4, "two sentences per turn, two turns"
+
+
+async def test_the_voice_is_connecting_before_anyone_speaks() -> None:
+    """Paid while the listener is still saying hello, not inside the answer."""
+    tts = CountingTts()
+    seen_at_start: list[int] = []
+    stt = HeardStt([Heard("hi", final=True)], on_start=lambda: seen_at_start.append(tts.opened))
+    session = LiveSession(_character(), stt, SlowLlm(["ok"], 0.0), tts)
+    await _offer_turns(session, 1)
+    await _drain(session)
+
+    assert seen_at_start == [1]
+
+
+async def test_her_pace_quickens_when_she_is_amused() -> None:
+    tts = CountingTts()
+    llm = SlowLlm(["Ha! That is a good joke."], 0.0)
+    session = LiveSession(_character(), ScriptedStt(["hi"]), llm, tts)
+    await _offer_turns(session, 1)
+    await _drain(session)
+
+    rates = [rate for _, rate in tts.said]
+    assert len(rates) == 2, "'Ha!' and the sentence after it"
+    # The opening line never changes pace: nothing is playing yet to hide
+    # the cost of the change behind.
+    assert rates[0] is None
+    assert rates[1] is not None
+    assert rates[1] > _character().voice.rate
+
+
+async def test_the_hands_rest_between_guessed_gestures() -> None:
+    """Gesturing on every line reads as a puppet; the guessed ones alternate."""
+    # No comma in the opening line: the splitter would release the clause
+    # before it on its own, and the count of sentences is the point here.
+    llm = SlowLlm(
+        [
+            "Loud and clear the engine is warm today. ",
+            "Another thought about the engine follows. ",
+            "The third one about the engine lands quietly.",
+        ],
+        0.0,
+    )
+    session = LiveSession(_character(), ScriptedStt(["hi"]), llm, SilentTts())
+    await _offer_turns(session, 1)
+
+    cues = [m.model_dump() async for m in session.run()]
+    gestures = [m["gesture"] for m in cues if m["type"] == "expression"]
+    assert gestures[0] != "idle"
+    assert gestures[1] == "idle"
+    assert gestures[2] != "idle"
+
+
+async def test_the_hands_rest_after_a_gesture_she_chose() -> None:
+    llm = SlowLlm(
+        [
+            "Loud and clear the engine is warm today. ",
+            "*shrug* Honestly I do not know about it at all. ",
+            "The third one about the engine lands quietly.",
+        ],
+        0.0,
+    )
+    session = LiveSession(_character(), ScriptedStt(["hi"]), llm, SilentTts())
+    await _offer_turns(session, 1)
+
+    cues = [m.model_dump() async for m in session.run()]
+    gestures = [m["gesture"] for m in cues if m["type"] == "expression"]
+    assert gestures == [gestures[0], "gesture-shrug", "idle"]
+    assert gestures[0] != "idle"
+
+
+async def test_she_is_told_when_the_camera_is_off() -> None:
+    """Told nothing, she guesses; told plainly, she says so."""
+    llm = SlowLlm(["ok"], 0.0)
+    session = LiveSession(_character(), ScriptedStt(["hello"]), llm, SilentTts())
+    await _offer_turns(session, 1)
+    await _drain(session)
+    assert "camera is off" in llm.seen_prompts[0].lower()
+
+
+async def test_the_recogniser_is_told_her_name() -> None:
+    """A general model hears "Wren" as "Ren" or "Ryan" until told to expect it."""
+    told: list[Sequence[str]] = []
+
+    class NotingStt:
+        def transcribe(
+            self, audio: AsyncIterator[bytes], keyterms: Sequence[str] = ()
+        ) -> AsyncIterator[Heard]:
+            told.append(tuple(keyterms))
+            return ScriptedStt([]).transcribe(audio)
+
+    session = LiveSession(_character(), NotingStt(), SlowLlm([], 0.0), SilentTts())
+    await _offer_turns(session, 1)
+    await _drain(session)
+
+    assert told == [("Wren", "Seed")]
+
+
+async def test_speaking_over_her_stops_the_reply() -> None:
+    """The recogniser is the barge-in signal: words arriving while she talks
+    are the listener talking, and she stops without the client's help."""
+    llm = EchoLlm(delay=0.05)
+    stt = HeardStt(
+        [
+            Heard("hello", final=True),
+            Heard("wait a", final=False),
+            Heard("wait a moment", final=True),
+        ]
+    )
+    session = LiveSession(_character(), stt, llm, SilentTts())
+    await _offer_turns(session, 3)
+
+    messages = [m.model_dump() for m in await _drain(session, limit=200)]
+    kinds = [m["type"] for m in messages]
+
+    assert kinds.count("interrupted") == 1
+    assert kinds.index("interrupted") < kinds.index("reply"), "the first reply was cut off"
+    # What was said over her is answered once she has stopped.
+    assert [m["text"] for m in messages if m["type"] == "transcript"] == ["hello", "wait a moment"]
+    assert [m["text"] for m in messages if m["type"] == "reply"] == ["You said wait a moment."]
+
+
+async def test_her_own_voice_coming_back_does_not_stop_her() -> None:
+    """Without echo cancellation her words reach the microphone. A fragment
+    made only of words she has just said is taken to be her, not the listener."""
+    llm = EchoLlm(delay=0.05)
+    # The echo arrives while she is speaking, which is the only time it can.
+    stt = HeardStt([Heard("hello", final=True), Heard("you said hello", final=False)], gap=0.12)
+    session = LiveSession(_character(), stt, llm, SilentTts())
+    await _offer_turns(session, 2)
+
+    kinds = [m.model_dump()["type"] for m in await _drain(session, limit=200)]
+    assert "interrupted" not in kinds
+    assert "reply" in kinds
+
+
+class FlakyStt:
+    """A recogniser whose socket dies once, then works."""
+
+    def __init__(self) -> None:
+        self.connections = 0
+
+    def transcribe(
+        self, audio: AsyncIterator[bytes], keyterms: Sequence[str] = ()
+    ) -> AsyncIterator[Heard]:
+        self.connections += 1
+        attempt = self.connections
+
+        async def run() -> AsyncIterator[Heard]:
+            async for _ in audio:
+                if attempt == 1:
+                    raise RuntimeError("keepalive ping timeout")
+                yield Heard("hello", final=True)
+
+        return run()
+
+
+async def test_a_dropped_recogniser_is_reconnected_not_fatal() -> None:
+    """A socket that dies ends a moment of listening, not the conversation."""
+    from personae import live
+
+    setattr(live, "RECONNECT_DELAY_S", 0.01)  # noqa: B010 - module constant, for speed
+    stt = FlakyStt()
+    session = LiveSession(_character(), stt, SlowLlm(["ok"], 0.0), SilentTts())
+    await _offer_turns(session, 2)
+
+    kinds = [m.model_dump()["type"] for m in await _drain(session)]
+
+    assert stt.connections == 2
+    assert "error" not in kinds
+    assert "reply" in kinds
+
+
+async def test_a_recogniser_that_keeps_dying_is_reported() -> None:
+    from personae import live
+
+    setattr(live, "RECONNECT_DELAY_S", 0.01)  # noqa: B010 - module constant, for speed
+
+    class DeadStt:
+        def transcribe(
+            self, audio: AsyncIterator[bytes], keyterms: Sequence[str] = ()
+        ) -> AsyncIterator[Heard]:
+            async def run() -> AsyncIterator[Heard]:
+                async for _ in audio:
+                    raise RuntimeError("gone")
+                yield Heard("", final=True)  # pragma: no cover - makes this a generator
+
+            return run()
+
+    session = LiveSession(_character(), DeadStt(), SlowLlm(["ok"], 0.0), SilentTts())
+    await _offer_turns(session, 10)
+
+    kinds = [m.model_dump()["type"] for m in await _drain(session)]
+    assert kinds[-1] == "error"
+
+
+def test_echo_is_her_words_and_only_her_words() -> None:
+    from personae.live import is_echo
+
+    spoken = "You said hello. What are we untangling today?"
+    assert is_echo("you said hello", spoken)
+    assert is_echo("What are we", spoken)
+    assert not is_echo("wait a moment", spoken)
+    assert not is_echo("hello wait", spoken)
+    assert not is_echo("", spoken)

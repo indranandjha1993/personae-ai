@@ -65,6 +65,10 @@ class Character(BaseModel):
     schema_version: int
     id: Annotated[str, Field(pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")]
     display_name: Annotated[str, Field(min_length=1)]
+    # Words the recogniser should expect beyond the display name: an old
+    # handle, a nickname, anything a listener is likely to call her that a
+    # general model hears as something else.
+    keyterms: tuple[str, ...] = ()
     persona: Persona
     voice: Voice
     expression: Expression

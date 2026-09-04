@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # How a language endpoint expects requests to be shaped. Vision in particular
@@ -65,8 +65,22 @@ class Settings(BaseSettings):
 
     # Flux turn detection. A higher threshold clips fewer words off the end of
     # a sentence but waits longer before answering.
-    eot_threshold: Annotated[float, Field(ge=0.5, le=1.0)] = 0.8
-    eot_timeout_ms: Annotated[int, Field(ge=500, le=60_000)] = 5_000
+    #
+    # Deepgram's high-reliability pairing. A lower threshold answers sooner
+    # but splits a sentence at every pause for thought, and being talked over
+    # is worse than waiting. The timeout is how long a pause mid-thought may
+    # run before the turn is closed regardless.
+    eot_threshold: Annotated[float, Field(ge=0.5, le=1.0)] = 0.85
+    eot_timeout_ms: Annotated[int, Field(ge=500, le=60_000)] = 8_000
+    # Confidence at which Flux says the turn has probably ended, a beat before
+    # it is sure. A reply is drafted from that moment and either committed when
+    # the real end arrives or thrown away if the speaker carries on.
+    #
+    # Off unless asked for: it fires on a breath between words, so most drafts
+    # are thrown away, and a local model keeps generating an abandoned draft
+    # while the real reply waits behind it. Only a hosted model that stops when
+    # the client goes away comes out ahead.
+    eager_eot_threshold: Annotated[float, Field(ge=0.3, le=0.9)] | None = None
     llm_base_url: str | None = None
     llm_api_key: str | None = None
     llm_model: str = "gpt-4o-mini"
@@ -83,6 +97,14 @@ class Settings(BaseSettings):
 
     pack_search_paths: tuple[str, ...] = ("packs/bundled", "packs/local")
 
+    @field_validator("eager_eot_threshold", mode="before")
+    @classmethod
+    def _blank_means_off(cls, value: object) -> object:
+        """An empty or 'off' variable disables it, rather than failing to parse."""
+        if isinstance(value, str) and value.strip().lower() in ("", "off", "none"):
+            return None
+        return value
+
     @model_validator(mode="after")
     def _language_matches_the_model(self) -> "Settings":
         """Catch a pairing the socket would refuse with an opaque 400."""
@@ -96,5 +118,12 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"PERSONAE_STT_LANGUAGE={self.stt_language} needs an aura-2 voice; "
                 "the flux voices speak English only"
+            )
+        # Flux rejects an eager threshold above the final one, and it would be
+        # meaningless anyway: the tentative signal must come first.
+        if self.eager_eot_threshold is not None and self.eager_eot_threshold > self.eot_threshold:
+            raise ValueError(
+                f"PERSONAE_EAGER_EOT_THRESHOLD={self.eager_eot_threshold} must not exceed "
+                f"PERSONAE_EOT_THRESHOLD={self.eot_threshold}"
             )
         return self

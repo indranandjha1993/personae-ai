@@ -31,6 +31,9 @@ Each character declares its persona, voice, and expressive vocabulary:
 schema_version = 1
 id             = "armored-inventor"
 display_name   = "The Armored Inventor"
+# Optional: words the recogniser should expect besides the display name --
+# a nickname, an old handle, anything a general model tends to mishear.
+keyterms       = ["Forge"]
 
 [persona]
 # The system prompt. Kept as prose, not a list of adjectives — LLMs follow
@@ -43,10 +46,10 @@ sincerity with wit. You answer in short bursts...
 [voice]
 provider_voice = "aura-orion-en"   # provider-specific voice id
 rate           = 1.05
+expressivity   = 1                 # optional, -2 (calm) to 2 (lively), on voices that support it
 
 [theme]
 primary   = "#c8102e"
-expressivity   = 1                 # optional, -2 (calm) to 2 (lively), on voices that support it
 secondary = "#ffc82e"
 
 [expression]

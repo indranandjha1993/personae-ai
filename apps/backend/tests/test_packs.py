@@ -140,3 +140,16 @@ def test_expressivity_is_optional_and_carried_through(tmp_path: Path) -> None:
         '[expression]\ngestures = ["idle"]\nemotions = ["neutral"]\n'
     )
     assert load_packs([pack]).get("p/c").voice.expressivity == -1
+
+
+def test_keyterms_are_optional_and_read(tmp_path: Path) -> None:
+    pack = tmp_path / "p"
+    (pack / "characters").mkdir(parents=True)
+    (pack / "pack.toml").write_text('schema_version = 1\nname = "p"\n')
+    (pack / "characters" / "c.toml").write_text(
+        'schema_version = 1\nid = "c"\ndisplay_name = "C"\nkeyterms = ["Cee", "Sea"]\n'
+        '[persona]\nprompt = "You are C."\n'
+        '[voice]\nprovider_voice = "v"\n'
+        '[expression]\ngestures = ["idle"]\nemotions = ["neutral"]\n'
+    )
+    assert load_packs([pack]).get("p/c").keyterms == ("Cee", "Sea")

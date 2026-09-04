@@ -17,7 +17,7 @@ export interface Capture {
 }
 
 /**
- * Start capturing, invoking `onFrame` with 100 ms of 16-bit PCM at a time.
+ * Start capturing, invoking `onFrame` with 80 ms of 16-bit PCM at a time.
  *
  * Must be called from a user gesture: browsers refuse to start an AudioContext
  * otherwise.
@@ -29,7 +29,11 @@ export async function startCapture(
     audio: {
       channelCount: 1,
       echoCancellation: true,
-      noiseSuppression: false,
+      // Room noise reaching the recogniser does two things: it costs words,
+      // and it keeps the turn detector unsure the speaker has finished, so
+      // the reply waits on a timeout. A laptop microphone in a real room
+      // needs this on.
+      noiseSuppression: true,
       // Lifts a quiet or distant speaker rather than leaving the recogniser
       // to work from what little reaches the microphone.
       autoGainControl: true,

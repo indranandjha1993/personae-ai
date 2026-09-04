@@ -28,6 +28,7 @@ def build_stt(settings: Settings) -> SttProvider:
             model=settings.stt_model,
             eot_threshold=settings.eot_threshold,
             eot_timeout_ms=settings.eot_timeout_ms,
+            eager_eot_threshold=settings.eager_eot_threshold,
         )
 
     from personae.providers.deepgram import DeepgramStt

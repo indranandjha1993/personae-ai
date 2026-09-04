@@ -9,7 +9,9 @@
  * AudioWorklet.addModule() rejects base64 data: URIs in Safari and Firefox.
  */
 
-const FRAME_SAMPLES = 1600 // 100 ms at 16 kHz
+// 80 ms at 16 kHz: the chunk size the recogniser performs best on. Smaller
+// frames reach it sooner; larger ones hold the end of a sentence back.
+const FRAME_SAMPLES = 1280
 
 class PcmCaptureProcessor extends AudioWorkletProcessor {
   constructor() {

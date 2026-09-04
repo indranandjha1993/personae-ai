@@ -18,16 +18,22 @@ describe('BargeInDetector', () => {
   })
 
   it('ignores room noise below the floor', () => {
-    expect(feed(0.01, 0, 10)).toBe(false)
+    expect(feed(0.02, 0.1, 10)).toBe(false)
   })
 
-  it('ignores the reply leaking back through the microphone', () => {
-    // Input roughly matches what is playing: that is echo, not speech.
-    expect(feed(0.2, 0.18, 10)).toBe(false)
+  it('ignores the reply leaking back at the level echo cancellation leaves it', () => {
+    // The microphone hears a fraction of what is played; that is echo.
+    expect(feed(0.05, 0.18, 10)).toBe(false)
   })
 
-  it('fires when someone speaks clearly over the reply', () => {
-    expect(feed(0.6, 0.15, 5)).toBe(true)
+  it('fires when someone speaks over the reply at an ordinary level', () => {
+    // Regression: a bar set well above the playback signal was out of reach
+    // of any voice in the room, so nobody could cut in.
+    expect(feed(0.2, 0.15, 5)).toBe(true)
+  })
+
+  it('needs nothing to be playing to have anything to interrupt', () => {
+    expect(feed(0.6, 0, 10)).toBe(false)
   })
 
   it('needs sustained sound, not a single loud frame', () => {

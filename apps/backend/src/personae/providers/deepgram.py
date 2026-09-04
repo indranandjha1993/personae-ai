@@ -7,7 +7,7 @@ clients of earlier majors.
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 
 from deepgram import AsyncDeepgramClient
 from deepgram.speak.v1.types.speak_v1text import SpeakV1Text
@@ -42,7 +42,9 @@ class DeepgramStt:
         self._endpointing_ms = endpointing_ms
         self._utterance_end_ms = utterance_end_ms
 
-    async def transcribe(self, audio: AsyncIterator[bytes]) -> AsyncIterator[Heard]:
+    async def transcribe(
+        self, audio: AsyncIterator[bytes], keyterms: Sequence[str] = ()
+    ) -> AsyncIterator[Heard]:
         async with self._client.listen.v1.connect(
             model=self.model,
             encoding="linear16",
@@ -50,6 +52,9 @@ class DeepgramStt:
             channels=1,
             language=self.language,
             punctuate=True,
+            # Only nova-3 takes keyterms; nova-2 has a different mechanism and
+            # rejects this one at the socket.
+            keyterm=list(keyterms) if keyterms and self.model.startswith("nova-3") else None,
             # Deepgram decides when a turn has ended, so a live conversation
             # needs no push-to-talk. Interim results arrive first and are
             # shown as provisional, so the listener sees they are being heard.
@@ -124,15 +129,15 @@ class DeepgramTts:
         """A character's own voice wins; the configured one fills the gap."""
         return requested or self._voice
 
+    async def open(self, voice: str, rate: float = 1.0, expressivity: int | None = None) -> Speaker:
+        # Aura connects per utterance; expressivity is a Flux control.
+        return SynthesizingSpeaker(self.synthesize, self.voice_for(voice), rate)
+
     async def synthesize(self, text: str, voice: str, rate: float = 1.0) -> AsyncIterator[bytes]:
         # A character's configured voice wins; the constructor default is only
         # a fallback for packs that do not name one.
         async with self._client.speak.v1.connect(
             model=self.voice_for(voice),
-    async def open(self, voice: str, rate: float = 1.0, expressivity: int | None = None) -> Speaker:
-        # Aura connects per utterance; expressivity is a Flux control.
-        return SynthesizingSpeaker(self.synthesize, self.voice_for(voice), rate)
-
             encoding="linear16",
             sample_rate=TTS_SAMPLE_RATE,
             speed=rate,
