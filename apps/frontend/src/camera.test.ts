@@ -8,15 +8,15 @@ describe('fittedSize', () => {
   })
 
   it('scales a large frame down to the long edge', () => {
-    expect(fittedSize(1920, 1080)).toEqual({ width: 768, height: 432 })
+    expect(fittedSize(1920, 1080)).toEqual({ width: 512, height: 288 })
   })
 
   it('preserves aspect ratio for portrait frames', () => {
-    expect(fittedSize(1080, 1920)).toEqual({ width: 432, height: 768 })
+    expect(fittedSize(1080, 1920)).toEqual({ width: 288, height: 512 })
   })
 
   it('never enlarges beyond the original', () => {
-    const { width } = fittedSize(100, 100, 768)
+    const { width } = fittedSize(100, 100, 512)
     expect(width).toBe(100)
   })
 })

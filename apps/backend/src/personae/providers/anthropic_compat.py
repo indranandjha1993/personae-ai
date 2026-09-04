@@ -18,7 +18,9 @@ logger = logging.getLogger(__name__)
 
 # A frame adds thousands of input tokens, so the first byte can take a while.
 REQUEST_TIMEOUT = httpx.Timeout(120.0, connect=10.0)
-MAX_TOKENS = 512
+# The persona asks for two or three sentences; this is the hard stop for a
+# model that ignores it. Every sentence past that is more waiting to hear it.
+MAX_TOKENS = 200
 
 
 class AnthropicCompatibleLlm:

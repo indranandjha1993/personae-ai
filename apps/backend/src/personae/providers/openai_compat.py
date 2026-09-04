@@ -17,6 +17,9 @@ from personae.providers.base import ProviderError
 logger = logging.getLogger(__name__)
 
 REQUEST_TIMEOUT = httpx.Timeout(60.0, connect=10.0)
+# A hard stop for a model that runs past the two or three sentences the persona
+# asks for; every extra sentence is more waiting to hear it.
+MAX_TOKENS = 200
 
 
 class OpenAiCompatibleLlm:
@@ -42,6 +45,7 @@ class OpenAiCompatibleLlm:
         payload = {
             "model": self._model,
             "stream": True,
+            "max_tokens": MAX_TOKENS,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 *history,

@@ -20,8 +20,12 @@ export type Status = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error'
 /** Give up waiting for a goodbye to finish after this. */
 const FAREWELL_MAX_WAIT_MS = 15_000
 
-/** How long she may think before we assume the reply is not coming. */
-const THINKING_TIMEOUT_MS = 30_000
+/**
+ * How long she may go without any sign of progress before the reply is
+ * assumed lost. Counted from the last message, not from the transcript: a
+ * slow model that is visibly writing is not the same as one that has died.
+ */
+const THINKING_TIMEOUT_MS = 45_000
 
 export interface Conversation {
   status: Status
@@ -61,6 +65,8 @@ export function useConversation(characterId: string): Conversation {
   const [turnFinished, setTurnFinished] = useState(false)
   const [playbackDone, setPlaybackDone] = useState(false)
   const [turnId, setTurnId] = useState(0)
+  // When something last arrived while she was thinking; re-arms the give-up timer.
+  const [progressAt, setProgressAt] = useState(0)
   const inputLevelRef = useRef(0)
   const queued = useRef<
     { text: string; playedBy: number | null; gesture?: string; emotion?: string }[]
@@ -137,6 +143,7 @@ export function useConversation(characterId: string): Conversation {
             // Provisional: the listener watching themselves be heard. It is
             // replaced by the next one and never acted on.
             setTranscript(message.text)
+            setProgressAt(Date.now())
             break
           case 'transcript':
             suppressing.current = false
@@ -153,9 +160,11 @@ export function useConversation(characterId: string): Conversation {
             // the next utterance gets a fresh still.
             bargeInRef.current.reset()
             frameSentRef.current = false
+            setProgressAt(Date.now())
             setStatus('thinking')
             break
           case 'speaking':
+            setProgressAt(Date.now())
             if (suppressing.current) break
             // Held until its audio has actually played. The socket delivers
             // far faster than real time, so revealing on arrival would put the
@@ -180,6 +189,7 @@ export function useConversation(characterId: string): Conversation {
             // Held for the sentence it belongs to. The wire runs seconds
             // ahead of the voice, so applying on arrival moves her body to
             // words she has not said yet.
+            setProgressAt(Date.now())
             if (suppressing.current) break
             pendingExpression.current = { gesture: message.gesture, emotion: message.emotion }
             break
@@ -337,16 +347,17 @@ export function useConversation(characterId: string): Conversation {
   const inputLevel = useCallback(() => inputLevelRef.current, [])
 
   // "Thinking" is never a resting state: if nothing comes back, say so rather
-  // than leaving the user watching a label forever.
+  // than leaving the user watching a label forever. Any message re-arms it,
+  // so a slow reply that is arriving is given its time.
   useEffect(() => {
     if (status !== 'thinking') return
     const giveUp = window.setTimeout(() => {
-      setDetail('She did not answer.')
+      setDetail('She did not answer in time.')
       teardown()
       setStatus('error')
     }, THINKING_TIMEOUT_MS)
     return () => { window.clearTimeout(giveUp) }
-  }, [status, teardown])
+  }, [status, progressAt, teardown])
 
   // Caption and teardown both run on the player's clock rather than on message
   // arrival: audio is delivered far faster than it is heard, so anything keyed

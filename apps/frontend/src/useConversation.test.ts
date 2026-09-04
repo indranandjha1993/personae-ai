@@ -97,8 +97,25 @@ describe('ending a turn', () => {
     act(() => { deliver({ type: 'transcript', text: 'Hello' }) })
     expect(result.current.status).toBe('thinking')
 
-    act(() => { vi.advanceTimersByTime(31_000) })
+    act(() => { vi.advanceTimersByTime(46_000) })
 
+    expect(result.current.status).toBe('error')
+  })
+
+  it('keeps waiting while the reply is visibly arriving', async () => {
+    // A slow model that has already sent its first sentence is not a dead
+    // one; the clock runs from the last sign of life, not from the question.
+    vi.useFakeTimers()
+    const { result } = await started()
+
+    act(() => { deliver({ type: 'transcript', text: 'Hello' }) })
+    act(() => { vi.advanceTimersByTime(40_000) })
+    act(() => { deliver({ type: 'expression', gesture: 'idle', emotion: 'neutral' }) })
+    act(() => { vi.advanceTimersByTime(40_000) })
+
+    expect(result.current.status).toBe('thinking')
+
+    act(() => { vi.advanceTimersByTime(10_000) })
     expect(result.current.status).toBe('error')
   })
 })

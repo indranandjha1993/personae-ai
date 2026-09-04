@@ -5,8 +5,13 @@
  * "what am I holding?", and a frame per second would cost tokens continuously.
  */
 
-/** Long edge of the captured still. Larger costs tokens for little gain. */
-const MAX_EDGE = 768
+/**
+ * Long edge of the captured still.
+ *
+ * Vision tokens scale with pixels, and every one of them is prefill before
+ * she can start answering. 512 is plenty to tell what someone is holding up.
+ */
+const MAX_EDGE = 512
 const JPEG_QUALITY = 0.7
 
 export interface Camera {
