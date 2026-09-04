@@ -13,7 +13,7 @@ from deepgram import AsyncDeepgramClient
 from deepgram.speak.v1.types.speak_v1text import SpeakV1Text
 
 from personae.protocol import PLAYBACK_SAMPLE_RATE
-from personae.providers.base import Heard
+from personae.providers.base import Heard, Speaker, SynthesizingSpeaker
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +129,10 @@ class DeepgramTts:
         # a fallback for packs that do not name one.
         async with self._client.speak.v1.connect(
             model=self.voice_for(voice),
+    async def open(self, voice: str, rate: float = 1.0, expressivity: int | None = None) -> Speaker:
+        # Aura connects per utterance; expressivity is a Flux control.
+        return SynthesizingSpeaker(self.synthesize, self.voice_for(voice), rate)
+
             encoding="linear16",
             sample_rate=TTS_SAMPLE_RATE,
             speed=rate,

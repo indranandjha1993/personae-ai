@@ -4,8 +4,9 @@ Flux detects the end of a turn itself, so the pipeline sees one finished
 transcript per turn rather than a stream of fragments to reassemble.
 """
 
-from collections.abc import AsyncIterator
-from typing import Any
+import asyncio
+from collections.abc import AsyncGenerator, AsyncIterator
+from typing import Any, ClassVar
 
 import pytest
 
@@ -142,3 +143,211 @@ def test_the_nova_and_aura_clients_are_still_reachable(
 
     assert isinstance(build_stt(Settings()), DeepgramStt)
     assert isinstance(build_tts(Settings()), DeepgramTts)
+
+
+class Event:
+    """One control message off the synthesis socket."""
+
+    def __init__(self, type: str, **fields: object) -> None:
+        self.type = type
+        for name, value in fields.items():
+            setattr(self, name, value)
+
+
+class SpeakConnection:
+    """A synthesis socket that answers each Speak with a scripted turn.
+
+    Audio for a sentence is its own bytes cut into pieces, so a test can tell
+    which sentence a chunk belonged to.
+    """
+
+    def __init__(self, fail: bool = False) -> None:
+        self.spoken: list[str] = []
+        self.speeds: list[float | None] = []
+        self.interrupts = 0
+        self.closed = False
+        self._fail = fail
+        self._events: asyncio.Queue[Event | bytes] = asyncio.Queue()
+
+    async def send_speak(self, message: Any) -> None:
+        self.spoken.append(message.text)
+        self._events.put_nowait(Event("SpeechStarted", speech_id="dg_sp_1"))
+        if self._fail:
+            self._events.put_nowait(Event("Error", code="DATA-0000", description="bad text"))
+            return
+        text = message.text.encode()
+        for start in range(0, len(text), 4):
+            self._events.put_nowait(text[start : start + 4])
+        self._events.put_nowait(Event("Flushed", speech_id="dg_sp_1"))
+        self._events.put_nowait(Event("SpeechMetadata", speech_id="dg_sp_1", audio_duration_ms=1))
+
+    async def send_flush(self, message: Any = None) -> None:
+        return None
+
+    async def send_configure(self, message: Any) -> None:
+        self.speeds.append(message.speed)
+
+    async def send_interrupt(self, message: Any = None) -> None:
+        self.interrupts += 1
+        self._events.put_nowait(Event("SpeechInterrupted", audio_played_ms=0))
+
+    async def send_close(self, message: Any = None) -> None:
+        self.closed = True
+
+    async def recv(self) -> Event | bytes:
+        return await self._events.get()
+
+    def __aiter__(self) -> AsyncIterator[Event | bytes]:
+        async def gen() -> AsyncIterator[Event | bytes]:
+            while True:
+                yield await self._events.get()
+
+        return gen()
+
+
+def _speak_client(connection: SpeakConnection) -> Any:
+    import contextlib
+
+    class Speak:
+        class V2:
+            connects: ClassVar[int] = 0
+            options: ClassVar[dict[str, object]] = {}
+
+            @classmethod
+            @contextlib.asynccontextmanager
+            async def connect(cls, **options: object) -> AsyncIterator[SpeakConnection]:
+                cls.connects += 1
+                cls.options = options
+                yield connection
+
+        v2 = V2()
+
+    class Client:
+        speak = Speak()
+
+    return Client()
+
+
+async def _said(speaker: Any, text: str, rate: float | None = None) -> bytes:
+    return b"".join([chunk async for chunk in speaker.say(text, rate)])
+
+
+@pytest.mark.timeout(10)
+async def test_one_connection_carries_every_sentence(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Connecting costs more than a sentence; it happens once per conversation."""
+    connection = SpeakConnection()
+    tts = FluxTts(api_key="x")
+    client = _speak_client(connection)
+    monkeypatch.setattr(tts, "_client", client)
+
+    speaker = await tts.open("flux-haley-en", 1.04, expressivity=1)
+    first = await _said(speaker, "Hello there.")
+    second = await _said(speaker, "Nice to meet you.")
+    await speaker.close()
+
+    assert client.speak.v2.connects == 1
+    assert first.strip() == b"Hello there."
+    assert second.strip() == b"Nice to meet you.", "each sentence's audio stays its own"
+    assert client.speak.v2.options["expressivity"] == 1
+    assert client.speak.v2.options["speed"] == 1.05, "snapped to the Flux grid"
+
+
+@pytest.mark.timeout(10)
+async def test_a_sentence_cut_short_is_stopped_and_the_next_still_plays(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A barge-in abandons a sentence mid-stream. The socket is shared, so
+    the tail of that sentence must be cleared before the next one starts."""
+    connection = SpeakConnection()
+    tts = FluxTts(api_key="x")
+    monkeypatch.setattr(tts, "_client", _speak_client(connection))
+    speaker = await tts.open("flux-haley-en", 1.0)
+
+    heard = b""
+    lines = speaker.say("A long sentence to be cut off.")
+    async for chunk in lines:
+        heard += chunk
+        break
+    # Leaving the loop does not close the generator; the session does this too.
+    assert isinstance(lines, AsyncGenerator)
+    await lines.aclose()
+
+    assert heard, "some of it was heard"
+    assert connection.interrupts == 1
+    assert (await _said(speaker, "Next.")).strip() == b"Next.", "no leftover audio from before"
+
+
+@pytest.mark.timeout(10)
+async def test_the_pace_is_changed_on_the_open_socket(monkeypatch: pytest.MonkeyPatch) -> None:
+    connection = SpeakConnection()
+    tts = FluxTts(api_key="x")
+    monkeypatch.setattr(tts, "_client", _speak_client(connection))
+    speaker = await tts.open("flux-haley-en", 1.0)
+
+    await _said(speaker, "Steady.")
+    await _said(speaker, "Quicker!", rate=1.1)
+    await _said(speaker, "Still quicker!", rate=1.1)
+    await _said(speaker, "As you were.")
+    await _said(speaker, "Steady again.", rate=1.0)
+
+    # Configured on change only; a line with no rate leaves the pace alone.
+    assert connection.speeds == [1.1, 1.0]
+
+
+@pytest.mark.timeout(10)
+async def test_a_synthesis_error_is_reported_as_a_provider_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from personae.providers.base import ProviderError
+
+    connection = SpeakConnection(fail=True)
+    tts = FluxTts(api_key="x")
+    monkeypatch.setattr(tts, "_client", _speak_client(connection))
+    speaker = await tts.open("flux-haley-en", 1.0)
+
+    with pytest.raises(ProviderError, match="bad text"):
+        await _said(speaker, "Hello.")
+
+
+@pytest.mark.timeout(10)
+async def test_each_sentence_is_sent_visibly_complete(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A sentence ending in a space is one the server can start on at once,
+    rather than waiting for the Flush that follows it."""
+    connection = SpeakConnection()
+    tts = FluxTts(api_key="x")
+    monkeypatch.setattr(tts, "_client", _speak_client(connection))
+    speaker = await tts.open("flux-haley-en", 1.0)
+
+    await _said(speaker, "Hello there.")
+
+    assert connection.spoken == ["Hello there. "]
+
+
+class DroppingSpeakConnection(SpeakConnection):
+    """A synthesis socket that has died since the last sentence."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.dead = True
+
+    async def send_speak(self, message: Any) -> None:
+        if self.dead:
+            self.dead = False
+            raise ConnectionError("no close frame received")
+        await super().send_speak(message)
+
+
+@pytest.mark.timeout(10)
+async def test_a_dead_voice_socket_is_reopened_for_the_next_line(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An idle socket the server dropped is found out on the next sentence;
+    it is reopened and the sentence still plays."""
+    connection = DroppingSpeakConnection()
+    tts = FluxTts(api_key="x")
+    client = _speak_client(connection)
+    monkeypatch.setattr(tts, "_client", client)
+    speaker = await tts.open("flux-haley-en", 1.0)
+
+    assert (await _said(speaker, "Still here.")).strip() == b"Still here."
+    assert client.speak.v2.connects == 2

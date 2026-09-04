@@ -121,6 +121,8 @@ provider_voice = "flux-haley-en"
 rate = 1.04
 
 [theme]
+# A lively register on the Flux voices: she is animated by nature.
+expressivity = 1
 primary = "#8b7fd4"
 secondary = "#b7a9ff"
 

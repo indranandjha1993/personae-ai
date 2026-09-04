@@ -46,6 +46,7 @@ rate           = 1.05
 
 [theme]
 primary   = "#c8102e"
+expressivity   = 1                 # optional, -2 (calm) to 2 (lively), on voices that support it
 secondary = "#ffc82e"
 
 [expression]

@@ -112,3 +112,31 @@ def test_later_paths_shadow_earlier_ones(tmp_path: Path) -> None:
         (pack / "characters" / "c.toml").write_text(body.format(name=name))
     registry = load_packs([tmp_path / "p0", tmp_path / "p1"])
     assert registry.get("shared/c").display_name == "Second"
+
+
+def test_expressivity_outside_the_voice_range_is_rejected(tmp_path: Path) -> None:
+    """The synthesiser takes -2 to 2; anything else fails at the socket."""
+    pack = tmp_path / "p"
+    (pack / "characters").mkdir(parents=True)
+    (pack / "pack.toml").write_text('schema_version = 1\nname = "p"\n')
+    (pack / "characters" / "c.toml").write_text(
+        'schema_version = 1\nid = "c"\ndisplay_name = "C"\n'
+        '[persona]\nprompt = "You are C."\n'
+        '[voice]\nprovider_voice = "v"\nexpressivity = 3\n'
+        '[expression]\ngestures = ["idle"]\nemotions = ["neutral"]\n'
+    )
+    with pytest.raises(PackError, match="expressivity"):
+        load_packs([pack])
+
+
+def test_expressivity_is_optional_and_carried_through(tmp_path: Path) -> None:
+    pack = tmp_path / "p"
+    (pack / "characters").mkdir(parents=True)
+    (pack / "pack.toml").write_text('schema_version = 1\nname = "p"\n')
+    (pack / "characters" / "c.toml").write_text(
+        'schema_version = 1\nid = "c"\ndisplay_name = "C"\n'
+        '[persona]\nprompt = "You are C."\n'
+        '[voice]\nprovider_voice = "v"\nexpressivity = -1\n'
+        '[expression]\ngestures = ["idle"]\nemotions = ["neutral"]\n'
+    )
+    assert load_packs([pack]).get("p/c").voice.expressivity == -1

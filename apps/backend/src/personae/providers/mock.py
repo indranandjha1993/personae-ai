@@ -14,7 +14,7 @@ from collections.abc import AsyncIterator, Sequence
 
 from personae.conversation import Message
 from personae.protocol import PLAYBACK_SAMPLE_RATE
-from personae.providers.base import Heard
+from personae.providers.base import Heard, Speaker, SynthesizingSpeaker
 
 _SAMPLE_RATE = PLAYBACK_SAMPLE_RATE
 _TONE_HZ = 220.0
@@ -59,6 +59,9 @@ class MockTts:
 
     async def synthesize(self, text: str, voice: str, rate: float = 1.0) -> AsyncIterator[bytes]:
         scaled = self._ms_per_character / max(rate, 0.1)
+    async def open(self, voice: str, rate: float = 1.0, expressivity: int | None = None) -> Speaker:
+        return SynthesizingSpeaker(self.synthesize, voice, rate)
+
         total_samples = int(_SAMPLE_RATE * scaled * max(len(text), 1) / 1000)
         frame = _SAMPLE_RATE // 10  # 100 ms frames, as a live provider would stream
         for start in range(0, total_samples, frame):

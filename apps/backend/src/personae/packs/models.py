@@ -29,6 +29,10 @@ class Voice(BaseModel):
 
     provider_voice: Annotated[str, Field(min_length=1)]
     rate: Annotated[float, Field(gt=0.0, le=3.0)] = 1.0
+    # How animated the delivery is, from -2 (calm) to 2 (lively), on voices
+    # that support it. Fixed for a whole conversation, so it belongs to the
+    # character rather than to a mood.
+    expressivity: Annotated[int, Field(ge=-2, le=2)] | None = None
 
 
 class Theme(BaseModel):

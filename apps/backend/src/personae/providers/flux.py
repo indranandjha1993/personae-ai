@@ -10,14 +10,21 @@ English-only, which is the trade for the lower latency.
 """
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import AsyncIterator
 
 from deepgram import AsyncDeepgramClient
-from deepgram.speak.v2.types import SpeakV2Flush, SpeakV2Speak
+from deepgram.speak.v2.socket_client import AsyncV2SocketClient
+from deepgram.speak.v2.types import (
+    SpeakV2Configure,
+    SpeakV2Flush,
+    SpeakV2Interrupt,
+    SpeakV2Speak,
+)
 
 from personae.protocol import PLAYBACK_SAMPLE_RATE
-from personae.providers.base import Heard
+from personae.providers.base import Heard, ProviderError, Speaker
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +50,14 @@ _SPEED_STEP = 0.05
 
 
 def _supported_speed(rate: float) -> float:
+# How long to wait for the server to confirm it has stopped a cut-off
+# sentence before giving up on the socket and opening a fresh one.
+ABANDON_TIMEOUT_S = 2.0
+
+# Peak loudness, 0 to 1, below which a turn's audio was too quiet to have
+# been a voice at a sensible distance from a working microphone.
+QUIET_INPUT = 0.02
+
     """Round a requested rate onto the grid Flux accepts."""
     clamped = min(max(rate, _SPEED_MIN), _SPEED_MAX)
     return round(round(clamped / _SPEED_STEP) * _SPEED_STEP, 2)
@@ -118,22 +133,148 @@ class FluxTts:
         return requested or self._voice
 
     async def synthesize(self, text: str, voice: str, rate: float = 1.0) -> AsyncIterator[bytes]:
-        async with self._client.speak.v2.connect(
-            model=self.voice_for(voice),
-            encoding="linear16",
-            sample_rate=TTS_SAMPLE_RATE,
-            speed=_supported_speed(rate),
-        ) as connection:
-            await connection.send_speak(SpeakV2Speak(type="Speak", text=text))
-            # Without an explicit flush the server waits for more text before
-            # it will finish the utterance.
-            await connection.send_flush(SpeakV2Flush(type="Flush"))
-            async for event in connection:
-                # Audio arrives as raw frames; the metadata record that follows
-                # marks the end of the utterance.
-                if isinstance(event, bytes | bytearray):
-                    if event:
-                        yield bytes(event)
-                    continue
-                if getattr(event, "type", None) == "SpeechMetadata":
-                    break
+        """One sentence on a socket of its own, for callers without a session."""
+        speaker = await self.open(voice, rate)
+        try:
+            async for chunk in speaker.say(text):
+                yield chunk
+        finally:
+            await speaker.close()
+
+
+class FluxSpeaker:
+    """One synthesis socket, held for a whole conversation.
+
+    Connecting costs more than a sentence does, so every sentence is a turn on
+    the same socket. Cut off mid-sentence, it tells the server to stop and
+    clears what was in flight, so the next sentence starts on a clean channel.
+    """
+
+    def __init__(
+        self,
+        client: AsyncDeepgramClient,
+        voice: str,
+        speed: float,
+        expressivity: int | None,
+    ) -> None:
+        self._client = client
+        self._voice = voice
+        self._speed = speed
+        self._expressivity = expressivity
+        self._stack: contextlib.AsyncExitStack | None = None
+        self._connection: AsyncV2SocketClient | None = None
+        # The speed the socket is currently set to; changed only when a line
+        # asks for a different one.
+        self._configured_speed = speed
+        # Sentences are serialised: the socket carries one turn at a time.
+        self._lock = asyncio.Lock()
+
+    async def connect(self) -> None:
+        stack = contextlib.AsyncExitStack()
+        self._connection = await stack.enter_async_context(
+            self._client.speak.v2.connect(
+                model=self._voice,
+                encoding="linear16",
+                sample_rate=TTS_SAMPLE_RATE,
+                speed=self._speed,
+                expressivity=self._expressivity,
+            )
+        )
+        self._stack = stack
+        self._configured_speed = self._speed
+
+    async def close(self) -> None:
+        stack, self._stack, self._connection = self._stack, None, None
+        if stack is not None:
+            with contextlib.suppress(Exception):
+                await stack.aclose()
+
+    async def say(self, text: str, rate: float | None = None) -> AsyncIterator[bytes]:
+        async with self._lock:
+            connection = await self._ready()
+            # A rate change is a control message ahead of the text, which can
+            # delay the first audio. ``None`` leaves the pace as it is, and the
+            # session only asks for a change on a line that has the previous
+            # line's playback to hide the cost behind.
+            try:
+                await self._begin(connection, text, rate)
+            except Exception as error:
+                # A socket that died between sentences is found out here: one
+                # fresh socket and one retry before it counts as a failure.
+                logger.warning("the voice socket dropped (%s); reconnecting", error)
+                await self.close()
+                connection = await self._ready()
+                await self._begin(connection, text, rate)
+
+            finished = False
+            try:
+                while True:
+                    event = await connection.recv()
+                    if isinstance(event, bytes | bytearray):
+                        if event:
+                            yield bytes(event)
+                        continue
+                    kind = getattr(event, "type", None)
+                    if kind == "SpeechMetadata":
+                        # The record that follows the last of the audio.
+                        finished = True
+                        return
+                    if kind == "Error":
+                        raise ProviderError(
+                            str(getattr(event, "description", "speech synthesis failed"))
+                        )
+                    if kind == "Warning":
+                        logger.warning("flux tts: %s", getattr(event, "description", event))
+            finally:
+                if not finished:
+                    await self._abandon()
+
+    async def _begin(self, connection: AsyncV2SocketClient, text: str, rate: float | None) -> None:
+        """Open a turn: the pace if it changed, the text, and the flush."""
+        if rate is not None:
+            wanted = _supported_speed(rate)
+            if wanted != self._configured_speed:
+                await connection.send_configure(SpeakV2Configure(type="Configure", speed=wanted))
+                self._configured_speed = wanted
+
+        # The trailing space tells the server the sentence is complete, so
+        # synthesis starts on the text alone rather than waiting for the
+        # Flush, which some network paths deliver noticeably later.
+        await connection.send_speak(SpeakV2Speak(type="Speak", text=f"{text} "))
+        # Without an explicit flush the server waits for more text before
+        # it will finish the utterance.
+        await connection.send_flush(SpeakV2Flush(type="Flush"))
+
+    async def _ready(self) -> AsyncV2SocketClient:
+        if self._connection is None:
+            await self.connect()
+        assert self._connection is not None
+        return self._connection
+
+    async def _abandon(self) -> None:
+        """Stop a sentence nobody will hear and clear its audio off the socket.
+
+        The server's acknowledgement is waited for, so the next sentence is not
+        preceded by this one's leftovers; if it does not come in time the
+        socket is dropped and reopened on the next sentence.
+        """
+        connection = self._connection
+        if connection is None:
+            return
+        try:
+            await connection.send_interrupt(SpeakV2Interrupt(type="Interrupt"))
+            async with asyncio.timeout(ABANDON_TIMEOUT_S):
+                while True:
+                    event = await connection.recv()
+                    if getattr(event, "type", None) in ("SpeechInterrupted", "SpeechMetadata"):
+                        return
+        except Exception:
+            logger.warning("could not stop the voice cleanly; reconnecting on the next line")
+            await self.close()
+    async def open(self, voice: str, rate: float = 1.0, expressivity: int | None = None) -> Speaker:
+        speaker = FluxSpeaker(
+            self._client, self.voice_for(voice), _supported_speed(rate), expressivity
+        )
+        await speaker.connect()
+        return speaker
+
