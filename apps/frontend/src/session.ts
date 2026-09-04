@@ -5,7 +5,7 @@
  * component; React binds to it through a hook.
  */
 
-import { parseServerMessage, type ServerMessage } from './protocol'
+import { audioFrom, parseServerMessage, type ServerMessage } from './protocol'
 
 export interface SessionHandlers {
   onMessage: (message: ServerMessage) => void
@@ -14,7 +14,7 @@ export interface SessionHandlers {
 }
 
 export interface Session {
-  sendAudio: (frame: Int16Array) => void
+  sendAudio: (frame: Int16Array<ArrayBuffer>) => void
   sendFrame: (jpeg: Blob) => Promise<void>
   stopSpeaking: () => void
   interrupt: () => void
@@ -33,22 +33,21 @@ export interface Session {
  */
 const MAX_BUFFERED_BYTES = 512_000
 
-function toBase64(frame: Int16Array): string {
-  const bytes = new Uint8Array(frame.buffer, frame.byteOffset, frame.byteLength)
-  let binary = ''
-  // Chunked to stay well clear of the argument limit on large frames.
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-  }
-  return btoa(binary)
-}
+/** What may wait for the socket to open: JSON text, or a raw audio frame. */
+type Outbound = string | Int16Array<ArrayBuffer>
 
 export function openSession(characterId: string, handlers: SessionHandlers): Session {
   const url = new URL(`/ws/live/${characterId}`, window.location.href)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   const socket = new WebSocket(url)
+  // Her voice comes back as raw frames; a Blob would need an async read.
+  socket.binaryType = 'arraybuffer'
 
-  socket.onmessage = (event: MessageEvent<string>) => {
+  socket.onmessage = (event: MessageEvent<string | ArrayBuffer>) => {
+    if (event.data instanceof ArrayBuffer) {
+      handlers.onMessage(audioFrom(event.data))
+      return
+    }
     let payload: unknown
     try {
       payload = JSON.parse(event.data)
@@ -67,18 +66,20 @@ export function openSession(characterId: string, handlers: SessionHandlers): Ses
   socket.onclose = (event) => { handlers.onClose?.(event) }
   socket.onerror = () => { handlers.onError?.('connection failed') }
 
-  // Roughly two seconds of audio. Capture starts before the handshake
-  // finishes, so without this the first word of the conversation is lost.
-  const MAX_PENDING = 20
-  let pending: string[] = []
+  // Roughly two seconds of audio in 80ms frames. Capture starts before the
+  // handshake finishes, so without this the first word of the conversation
+  // is lost.
+  const MAX_PENDING = 25
+  let pending: Outbound[] = []
 
   socket.addEventListener('open', () => {
     for (const payload of pending) socket.send(payload)
     pending = []
   })
 
-  const sendWhenOpen = (payload: object) => {
-    const encoded = JSON.stringify(payload)
+  const sendWhenOpen = (payload: object | Int16Array<ArrayBuffer>) => {
+    // Audio goes as it is; everything else is JSON.
+    const encoded: Outbound = payload instanceof Int16Array ? payload : JSON.stringify(payload)
     if (socket.readyState === WebSocket.OPEN) {
       // Drop rather than queue without bound if the uplink has stalled. Not
       // reported as an error: a conversation that survives a hiccup is better
@@ -94,7 +95,7 @@ export function openSession(characterId: string, handlers: SessionHandlers): Ses
   }
 
   return {
-    sendAudio: (frame) => { sendWhenOpen({ type: 'audio', pcm: toBase64(frame) }) },
+    sendAudio: (frame) => { sendWhenOpen(frame) },
     stopSpeaking: () => { sendWhenOpen({ type: 'stop' }) },
     interrupt: () => { sendWhenOpen({ type: 'interrupt' }) },
     sendFrame: async (jpeg) => {

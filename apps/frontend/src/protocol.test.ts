@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { decodePcm, parseServerMessage } from './protocol'
+import { audioFrom, decodePcm, parseServerMessage } from './protocol'
 
 describe('parseServerMessage', () => {
   it('accepts each known message type', () => {
@@ -32,5 +32,17 @@ describe('decodePcm', () => {
 
   it('ignores a trailing odd byte rather than throwing', () => {
     expect(decodePcm(btoa('\x01\x00\x02')).length).toBe(1)
+  })
+})
+
+describe('audioFrom', () => {
+  it('reads a binary frame as little-endian 16-bit samples', () => {
+    const frame = new Uint8Array([0x01, 0x00, 0x02, 0x00]).buffer
+    expect(Array.from(audioFrom(frame).samples)).toEqual([1, 2])
+  })
+
+  it('drops a trailing odd byte rather than shifting every sample', () => {
+    const frame = new Uint8Array([0x01, 0x00, 0x02]).buffer
+    expect(audioFrom(frame).samples.length).toBe(1)
   })
 })

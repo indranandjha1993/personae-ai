@@ -16,8 +16,10 @@ from starlette.websockets import WebSocketDisconnect
 from personae.live import LiveSession
 from personae.packs.loader import CharacterRegistry, load_packs
 from personae.protocol import (
+    MAX_FRAME_BYTES,
     PLAYBACK_SAMPLE_RATE,
     AudioFrame,
+    AudioMessage,
     InterruptSignal,
     MalformedMessageError,
     ServerMessage,
@@ -156,13 +158,27 @@ def create_app() -> FastAPI:
         async def read() -> None:
             while True:
                 try:
-                    message = decode(await socket.receive_text())
+                    frame = await _receive(socket)
                 except WebSocketDisconnect:
                     # Without this the session waits forever for input that
                     # will never arrive, holding its upstream connections open.
                     await session.interrupt()
                     await session.close_input()
                     return
+                if isinstance(frame, bytes):
+                    # Microphone audio arrives raw: no JSON to parse and no
+                    # base64 to undo, ten times a second.
+                    if len(frame) > MAX_FRAME_BYTES:
+                        await socket.send_json(
+                            ServerMessage.error("malformed message").model_dump()
+                        )
+                        continue
+                    # Sixteen-bit samples; a stray odd byte would shift every
+                    # sample after it.
+                    await session.offer(frame[: len(frame) - len(frame) % 2])
+                    continue
+                try:
+                    message = decode(frame)
                 except MalformedMessageError:
                     # Report and keep listening: one bad frame should not end
                     # a conversation that is otherwise going fine.
@@ -183,7 +199,10 @@ def create_app() -> FastAPI:
         logger.info("session opened: %s/%s", pack, character)
         try:
             async for outbound in replies:
-                await socket.send_json(outbound.model_dump())
+                if isinstance(outbound, AudioMessage):
+                    await socket.send_bytes(outbound.pcm)
+                else:
+                    await socket.send_json(outbound.model_dump())
         except WebSocketDisconnect:
             pass
         except Exception:
@@ -198,6 +217,22 @@ def create_app() -> FastAPI:
             logger.info("session closed: %s/%s", pack, character)
 
     return app
+
+
+async def _receive(socket: WebSocket) -> str | bytes:
+    """The next inbound frame, whichever form the client chose for it.
+
+    Audio comes as binary and everything else as JSON text; reading the raw
+    event is what lets one loop accept both.
+    """
+    message = await socket.receive()
+    if message["type"] == "websocket.disconnect":
+        raise WebSocketDisconnect(message.get("code", 1000), message.get("reason"))
+    data = message.get("bytes")
+    if isinstance(data, bytes):
+        return data
+    text = message.get("text")
+    return text if isinstance(text, str) else ""
 
 
 app = create_app()

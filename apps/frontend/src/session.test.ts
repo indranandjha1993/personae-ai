@@ -14,8 +14,8 @@ class FakeSocket {
   static OPEN = 1
   readyState = 1
   bufferedAmount = 0
-  sent: string[] = []
-  send(payload: string): void { this.sent.push(payload) }
+  sent: (string | ArrayBufferView)[] = []
+  send(payload: string | ArrayBufferView): void { this.sent.push(payload) }
   close = vi.fn()
   addEventListener = vi.fn()
 }
@@ -29,7 +29,7 @@ function withSocket(): { socket: FakeSocket; session: ReturnType<typeof openSess
 
 describe('sending captured audio', () => {
   it('keeps sending through a stall of a few seconds', () => {
-    // 100ms of speech is about 4.3KB on the wire. A brief hiccup on a slow
+    // 80ms of speech is about 2.5KB on the wire. A brief hiccup on a slow
     // uplink easily backs up a second or two of it, and dropping frames then
     // tears a hole in the middle of a sentence.
     const { socket, session } = withSocket()
@@ -47,5 +47,19 @@ describe('sending captured audio', () => {
     session.sendAudio(new Int16Array(1600))
 
     expect(socket.sent).toHaveLength(0)
+  })
+})
+
+describe('the shape of what goes over the wire', () => {
+  it('sends audio as a raw frame, not base64 inside JSON', () => {
+    const { socket, session } = withSocket()
+    session.sendAudio(new Int16Array([1, 2, 3]))
+    expect(socket.sent[0]).toBeInstanceOf(Int16Array)
+  })
+
+  it('still sends control messages as JSON', () => {
+    const { socket, session } = withSocket()
+    session.interrupt()
+    expect(socket.sent[0]).toBe(JSON.stringify({ type: 'interrupt' }))
   })
 })

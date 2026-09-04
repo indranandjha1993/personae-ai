@@ -22,7 +22,9 @@ export interface Capture {
  * Must be called from a user gesture: browsers refuse to start an AudioContext
  * otherwise.
  */
-export async function startCapture(onFrame: (frame: Int16Array) => void): Promise<Capture> {
+export async function startCapture(
+  onFrame: (frame: Int16Array<ArrayBuffer>) => void,
+): Promise<Capture> {
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: {
       channelCount: 1,
@@ -47,7 +49,9 @@ export async function startCapture(onFrame: (frame: Int16Array) => void): Promis
 
   const source = context.createMediaStreamSource(stream)
   const worklet = new AudioWorkletNode(context, 'pcm-capture')
-  worklet.port.onmessage = (event: MessageEvent<Int16Array>) => { onFrame(event.data) }
+  // The worklet transfers each frame's buffer, so it is a plain ArrayBuffer
+  // and can go straight onto the socket.
+  worklet.port.onmessage = (event: MessageEvent<Int16Array<ArrayBuffer>>) => { onFrame(event.data) }
   source.connect(worklet)
 
   let stopped = false

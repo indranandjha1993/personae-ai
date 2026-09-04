@@ -12,7 +12,7 @@ import { BargeInDetector, frameLevel } from './audio/barge-in'
 import { startCapture, type Capture } from './audio/capture'
 import { PcmPlayer, SILENT_FEATURES, type AudioFeatures } from './audio/playback'
 import { startCamera, type Camera } from './camera'
-import { decodePcm, DEFAULT_SAMPLE_RATE } from './protocol'
+import { DEFAULT_SAMPLE_RATE } from './protocol'
 import { openSession, type Session } from './session'
 
 export type Status = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error'
@@ -202,7 +202,7 @@ export function useConversation(characterId: string): Conversation {
               player = new PcmPlayer(context, DEFAULT_SAMPLE_RATE)
               playerRef.current = player
             }
-            player.enqueue(decodePcm(message.pcm))
+            player.enqueue(message.samples)
             break
           case 'interrupted':
             suppressing.current = false

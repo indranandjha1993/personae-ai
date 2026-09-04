@@ -51,6 +51,11 @@ def test_server_audio_is_base64_encoded() -> None:
     assert payload["pcm"] == "/wCA"
 
 
+def test_server_audio_keeps_its_bytes_for_the_binary_frame() -> None:
+    """The socket sends audio raw; base64 is only for a JSON dump."""
+    assert ServerMessage.audio(bytes([255, 0, 128])).pcm == bytes([255, 0, 128])
+
+
 def test_server_expression_carries_gesture_and_emotion() -> None:
     payload = ServerMessage.expression(gesture="idle", emotion="neutral").model_dump()
     assert payload == {"type": "expression", "gesture": "idle", "emotion": "neutral"}

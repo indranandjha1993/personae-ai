@@ -32,9 +32,15 @@ export interface ReplyMessage {
   text: string
 }
 
+/**
+ * Her voice, as 16-bit samples.
+ *
+ * Arrives as a binary frame rather than base64 in JSON: a third smaller, and
+ * the bytes go to the audio graph without a decode step ten times a second.
+ */
 export interface AudioMessage {
   type: 'audio'
-  pcm: string
+  samples: Int16Array
 }
 
 export interface ExpressionMessage {
@@ -94,7 +100,8 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
         ? { type: raw['type'], text: raw['text'] }
         : null
     case 'audio':
-      return typeof raw['pcm'] === 'string' ? { type: 'audio', pcm: raw['pcm'] } : null
+      // The JSON form survives for anything that still sends it.
+      return typeof raw['pcm'] === 'string' ? { type: 'audio', samples: decodePcm(raw['pcm']) } : null
     case 'expression':
       return typeof raw['gesture'] === 'string' && typeof raw['emotion'] === 'string'
         ? { type: 'expression', gesture: raw['gesture'], emotion: raw['emotion'] }
@@ -119,6 +126,12 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
  * samples at any other rate shifts pitch and speed.
  */
 export const DEFAULT_SAMPLE_RATE = 24_000
+
+/** Wrap a binary frame of little-endian 16-bit PCM as an audio message. */
+export function audioFrom(buffer: ArrayBuffer): AudioMessage {
+  // A stray odd byte would shift every sample after it; drop it instead.
+  return { type: 'audio', samples: new Int16Array(buffer, 0, Math.floor(buffer.byteLength / 2)) }
+}
 
 /** Decode a base64 audio payload into 16-bit PCM samples. */
 export function decodePcm(base64: string): Int16Array {

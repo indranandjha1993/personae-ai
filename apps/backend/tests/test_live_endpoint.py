@@ -1,6 +1,7 @@
 """The live WebSocket endpoint, end to end."""
 
 import base64
+import json
 from collections.abc import AsyncIterator, Iterator
 
 import pytest
@@ -26,7 +27,12 @@ def _collect(socket: object, limit: int = 120) -> list[dict[str, object]]:
     """
     messages: list[dict[str, object]] = []
     for _ in range(limit):
-        message = socket.receive_json()  # type: ignore[attr-defined]
+        raw = socket.receive()  # type: ignore[attr-defined]
+        # Audio comes as a binary frame; everything else is JSON text.
+        pcm = raw.get("bytes")
+        message: dict[str, object] = (
+            {"type": "audio", "pcm": pcm} if pcm is not None else json.loads(raw["text"])
+        )
         messages.append(message)
         # Audio now precedes the caption, so collecting stops at the reply
         # rather than at the first sound.
@@ -169,3 +175,36 @@ async def test_a_provider_failure_is_reported_not_fatal() -> None:
 
     kinds = [message.model_dump()["type"] async for message in session.run()]
     assert "error" in kinds
+
+
+def test_audio_is_sent_back_as_binary_frames(client: TestClient) -> None:
+    """A third smaller than base64 in JSON, and nothing to parse ten times a second."""
+    with client.websocket_connect("/ws/live/bundled/seed") as socket:
+        socket.receive_json()  # ready
+        socket.send_json({"type": "audio", "pcm": SPEECH})
+        socket.send_json({"type": "stop"})
+        messages = _collect(socket)
+
+    audio = [m for m in messages if m["type"] == "audio"]
+    assert audio, "no audio came back"
+    assert all(isinstance(m["pcm"], bytes) for m in audio)
+
+
+def test_microphone_audio_is_accepted_as_a_binary_frame(client: TestClient) -> None:
+    with client.websocket_connect("/ws/live/bundled/seed") as socket:
+        socket.receive_json()  # ready
+        socket.send_bytes(base64.b64decode(SPEECH))
+        socket.send_json({"type": "stop"})
+        kinds = [m["type"] for m in _collect(socket)]
+    assert "transcript" in kinds
+
+
+def test_an_oversized_binary_frame_is_refused_not_fatal(client: TestClient) -> None:
+    with client.websocket_connect("/ws/live/bundled/seed") as socket:
+        socket.receive_json()  # ready
+        socket.send_bytes(b"\x00" * 200_000)
+        assert socket.receive_json()["type"] == "error"
+        # The conversation goes on.
+        socket.send_json({"type": "audio", "pcm": SPEECH})
+        socket.send_json({"type": "stop"})
+        assert "transcript" in [m["type"] for m in _collect(socket)]

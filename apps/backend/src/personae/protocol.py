@@ -16,6 +16,7 @@ from pydantic import (
     Field,
     TypeAdapter,
     ValidationError,
+    field_serializer,
     field_validator,
 )
 
@@ -147,7 +148,7 @@ class ServerMessage(_Message):
 
     @staticmethod
     def audio(pcm: bytes) -> "AudioMessage":
-        return AudioMessage(type="audio", pcm=base64.b64encode(pcm).decode("ascii"))
+        return AudioMessage(type="audio", pcm=pcm)
 
     @staticmethod
     def expression(gesture: str, emotion: str) -> "ExpressionMessage":
@@ -203,8 +204,19 @@ class ReplyMessage(ServerMessage):
 
 
 class AudioMessage(ServerMessage):
+    """Synthesised speech.
+
+    Sent as a binary frame: a third smaller than base64 in JSON, and the client
+    can hand the bytes straight to the audio graph. The base64 form survives
+    for anything that dumps the message as JSON.
+    """
+
     type: Literal["audio"]
-    pcm: str
+    pcm: bytes
+
+    @field_serializer("pcm")
+    def _as_base64(self, pcm: bytes) -> str:
+        return base64.b64encode(pcm).decode("ascii")
 
 
 class ExpressionMessage(ServerMessage):
