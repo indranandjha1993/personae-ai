@@ -1,11 +1,39 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { BlinkController } from './blink'
+import type { Activity } from './expression-map'
 import { GazeController } from './gaze'
 
 const run = (fn: (dt: number) => void, seconds: number, dt = 1 / 60): void => {
   for (let t = 0; t < seconds; t += dt) fn(dt)
 }
+
+const FRAME = 1 / 60
+
+/**
+ * A controller already looking away, with every coin-flip inside it decided.
+ *
+ * Aversion is what the clause-boundary and stressed-word rules act on, and it
+ * arrives by chance; fixing the rolls is what lets the two rules be tested at
+ * all rather than sampled for statistically.
+ */
+const averted = (): GazeController => {
+  const gaze = new GazeController()
+  // Taking the floor averts on the first speaking frame at this roll.
+  gaze.update('speaking', FRAME, 0, false)
+  run((dt) => gaze.update('speaking', dt, 0, false), 0.1)
+  return gaze
+}
+
+/**
+ * How far off the camera the eyes are, sampled without disturbing them.
+ *
+ * The activity has to match whatever the caller has been running: arriving at
+ * 'speaking' from anything else is itself a reason to look away, so a probe
+ * that changed it would cause the aversion it went to measure.
+ */
+const offCamera = (gaze: GazeController, activity: Activity = 'speaking'): number =>
+  Math.abs(gaze.update(activity, FRAME, 0, false).yaw)
 
 describe('GazeController', () => {
   it('holds the camera by default', () => {
@@ -58,6 +86,66 @@ describe('GazeController', () => {
         expect(Math.abs(pitch)).toBeLessThanOrEqual(20)
       }, 8)
     }
+  })
+})
+
+/**
+ * The two rules that give gaze its conversational meaning.
+ *
+ * Both were unreachable until the caller passed the pause and the accent
+ * through, so these cover the wiring as much as the behaviour: a controller
+ * that only ever sees zero and false still passes every test above.
+ */
+describe('GazeController, listening to the conversation', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('glances back at the listener at a clause boundary', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.1)
+    const gaze = new GazeController()
+    gaze.update('speaking', FRAME, 0, false)
+    run((dt) => gaze.update('speaking', dt, 0, false), 0.1)
+    expect(offCamera(gaze)).toBeGreaterThan(2)
+
+    gaze.update('speaking', FRAME, 0.36, false)
+    run((dt) => gaze.update('speaking', dt, 0.36, false), 0.1)
+    expect(offCamera(gaze)).toBeLessThan(1)
+  })
+
+  it('stays away through the middle of a clause', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.1)
+    const gaze = averted()
+    run((dt) => gaze.update('speaking', dt, 0.2, false), 0.2)
+    expect(offCamera(gaze)).toBeGreaterThan(2)
+  })
+
+  it('takes a clause boundary as it passes, not any pause at all', () => {
+    // The window is a couple of frames wide on a rising counter, so a pause
+    // already well past it is a silence she is sitting in, not a comma.
+    vi.spyOn(Math, 'random').mockReturnValue(0.1)
+    const gaze = averted()
+    run((dt) => gaze.update('speaking', dt, 1.5, false), 0.2)
+    expect(offCamera(gaze)).toBeGreaterThan(2)
+  })
+
+  it('meets your eyes on the word she means', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.1)
+    const gaze = averted()
+    expect(offCamera(gaze)).toBeGreaterThan(2)
+
+    gaze.update('speaking', FRAME, 0, true)
+    run((dt) => gaze.update('speaking', dt, 0, false), 0.1)
+    expect(offCamera(gaze)).toBeLessThan(1)
+  })
+
+  it('does not answer a stressed word while she is already looking at you', () => {
+    // Half the time the accent is ignored; the other half it is already
+    // contact, and neither should launch a saccade to where the eyes are.
+    vi.spyOn(Math, 'random').mockReturnValue(0.1)
+    const gaze = new GazeController()
+    run((dt) => gaze.update('listening', dt, 0, true), 0.5)
+    expect(offCamera(gaze, 'listening')).toBeLessThan(2)
   })
 })
 

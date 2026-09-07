@@ -52,10 +52,16 @@ export class EmphasisTracker {
       if (Math.random() < 0.6) this.startBrow(accent)
     }
 
+    // Advanced before the envelope is read and before either brow uses it:
+    // bedLevel moves browProgress and the bed as it goes, so leaving the call
+    // inline made both brows depend on the order the fields happen to sit in.
+    const bed = this.bedLevel(delta, speaking)
+    const envelope = this.browEnvelope()
+
     return {
       accent,
-      browLeft: Math.min(1, this.bedLevel(delta, speaking) + this.browLeft * this.browEnvelope()),
-      browRight: Math.min(1, this.bed + this.browRight * this.browEnvelope()),
+      browLeft: Math.min(1, bed + this.browLeft * envelope),
+      browRight: Math.min(1, bed + this.browRight * envelope),
       nod: this.nodValue(delta),
     }
   }

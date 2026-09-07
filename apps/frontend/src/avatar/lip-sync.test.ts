@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { AudioFeatures } from '../audio/playback'
-import { LipSync } from './lip-sync'
+import { LipSync, mouthShape } from './lip-sync'
 
 const speech = (over: Partial<AudioFeatures> = {}): AudioFeatures => ({
   rms: 0.09, frontness: 0.5, openness: 0.5, sibilance: 0.05, voiced: 1, ...over,
@@ -70,5 +70,54 @@ describe('LipSync', () => {
     expect(lip.pauseSeconds).toBe(0)
     settle(lip, silence, 0.5)
     expect(lip.pauseSeconds).toBeGreaterThan(0.4)
+  })
+})
+
+/**
+ * What the face is actually given.
+ *
+ * The suite above asserts on `wide` twice, and until this existed nothing
+ * consumed it -- the mouth computed its width every frame, the tests agreed it
+ * was right, and none of it reached the model.
+ */
+describe('mouthShape', () => {
+  it('spreads the lips on a hiss rather than showing nothing', () => {
+    const hiss = mouthShape(settle(new LipSync(), speech({ rms: 0.02, voiced: 0.1, sibilance: 0.6 })))
+    const round = mouthShape(settle(new LipSync(), speech({ frontness: 0.05 })))
+    expect(hiss.ih + hiss.ee).toBeGreaterThan(round.ih + round.ee)
+  })
+
+  it('carries width to the face, not just to the weights', () => {
+    const front = settle(new LipSync(), speech({ frontness: 0.95 }))
+    expect(front.wide).toBeGreaterThan(0)
+    // The fold is what makes that number visible: dropping it would leave the
+    // spread vowels at exactly the value the blend alone produced.
+    expect(mouthShape(front).ee).toBeGreaterThan(front.ee)
+  })
+
+  it('rounds the mouth toward "ou" when the lips purse', () => {
+    const back = settle(new LipSync(), speech({ frontness: 0.02, openness: 0.2 }))
+    expect(mouthShape(back).ou).toBeGreaterThanOrEqual(back.ou)
+  })
+
+  it('keeps the lips parted, and settles them after a long silence', () => {
+    const quiet = settle(new LipSync(), silence, 2)
+    expect(quiet.rest).toBeGreaterThan(0)
+    const shape = mouthShape(quiet)
+    expect(shape.aa).toBeGreaterThan(quiet.jaw)
+    expect(shape.aa).toBeLessThan(0.5)
+  })
+
+  it('never stacks the folded morphs past what the mesh can take', () => {
+    const lip = new LipSync()
+    for (const frontness of [0, 0.25, 0.5, 0.75, 1]) {
+      for (const openness of [0, 0.5, 1]) {
+        for (const sibilance of [0.05, 0.6]) {
+          const s = mouthShape(settle(lip, speech({ frontness, openness, sibilance, rms: 0.3 }), 0.3))
+          expect(s.ih + s.ou + s.ee + s.oh).toBeLessThanOrEqual(0.9)
+          expect(s.aa).toBeLessThanOrEqual(1)
+        }
+      }
+    }
   })
 })

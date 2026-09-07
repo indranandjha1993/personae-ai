@@ -51,6 +51,17 @@ const JAW_MAX = 0.55
 /** Stacked morphs distort the mesh past this. */
 const VOWEL_CAP = 0.85
 
+/**
+ * How much of the width channel the spread vowels carry.
+ *
+ * Half: "ee" and "ih" are shapes in their own right, and a mouth pushed all
+ * the way to one of them on width alone stops looking like it is saying
+ * anything and starts looking like it is grinning.
+ */
+const WIDTH_AS_SPREAD = 0.5
+/** Rounding has only the one vowel to live in, so it spends more of itself there. */
+const ROUND_AS_OU = 0.6
+
 export class LipSync {
   private readonly weights: LipWeights = {
     aa: 0, ih: 0, ou: 0, ee: 0, oh: 0, lipW: 0, jaw: JAW_AT_REST, wide: 0, rest: 0,
@@ -139,4 +150,47 @@ export class LipSync {
     }
     return w
   }
+}
+
+/** The five weights a VRM face can actually be given. */
+export interface MouthShape {
+  aa: number
+  ih: number
+  ou: number
+  ee: number
+  oh: number
+}
+
+/**
+ * Spend the mouth's nine channels on the five the face has.
+ *
+ * VRM gives a face five vowels and nothing at all for how wide or how rounded
+ * the lips are, so width has no channel of its own to be written to and has to
+ * be spent on the vowels that already carry it: spread reads as "ee" and "ih",
+ * rounding reads as "ou". Folding rather than dropping is the point -- the
+ * hiss above shapes an "s" almost entirely through width, and a face given
+ * only the vowels performed none of it.
+ */
+export function mouthShape(w: LipWeights): MouthShape {
+  let aa = w.aa
+  let oh = w.oh
+  let ih = w.ih + w.wide * WIDTH_AS_SPREAD
+  let ee = w.ee + w.wide * WIDTH_AS_SPREAD
+  let ou = w.ou + w.lipW * ROUND_AS_OU
+
+  // The class caps the vowels it blends; the width folded in here is weight it
+  // never saw, so the cap is applied again over the total that will be written.
+  const blended = aa + ih + ou + ee + oh
+  if (blended > VOWEL_CAP) {
+    const scale = VOWEL_CAP / blended
+    aa *= scale
+    ih *= scale
+    ou *= scale
+    ee *= scale
+    oh *= scale
+  }
+
+  // The jaw rides under the vowels as a floor so the mouth line never closes,
+  // and the settled shape of a long silence rides under that.
+  return { aa: Math.min(1, aa + w.jaw + w.rest), ih, ou, ee, oh }
 }
