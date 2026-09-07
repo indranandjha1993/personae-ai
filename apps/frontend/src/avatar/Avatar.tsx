@@ -15,7 +15,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import type { AudioFeatures } from '../audio/playback'
 import { BlinkController } from './blink'
 import { EmphasisTracker } from './emphasis'
-import { LipSync } from './lip-sync'
+import { LipSync, mouthShape } from './lip-sync'
 import { GazeController } from './gaze'
 import { GesturePhaser } from './gesture-timing'
 import { ATTEND, blendPoses, REST, toBodyPose } from './gestures'
@@ -106,6 +106,7 @@ export function Avatar({
     pitch: 0,
     yaw: 0,
     lean: 0,
+    gestureLean: 0,
   })
   const clock = useRef(0)
   const posed = useRef(REST)
@@ -315,6 +316,10 @@ export function Avatar({
     s.pitch = damp(s.pitch, pose.headPitch, SMOOTHING * 0.55, delta)
     s.yaw = damp(s.yaw, pose.headYaw, SMOOTHING * 0.55, delta)
     s.lean = damp(s.lean, pose.lean, SMOOTHING * 0.55, delta)
+    // The lean the gesture asked for, alongside the one the activity did:
+    // explaining tips in, considering sits back, and a namaste is a bow from
+    // the waist that the head alone cannot make.
+    s.gestureLean = damp(s.gestureLean, posed.current.torsoLean, SMOOTHING * 0.55, delta)
 
     const breath = Math.sin(clock.current * 1.6) * 0.02 * pose.sway
     const drift = activity === 'thinking' ? Math.sin(clock.current * 0.9) * 0.05 : 0
@@ -337,7 +342,7 @@ export function Avatar({
       vrm.humanoid.getNormalizedBoneNode('spine')
     if (chest) {
       chest.rotation.y = s.torsoTwist * 0.4
-      chest.rotation.x = breath * 0.6 - lift * 0.04 + s.lean * 0.25
+      chest.rotation.x = breath * 0.6 - lift * 0.04 + s.lean * 0.25 + s.gestureLean
     }
 
     // After the absolute head and arm writes, so the oscillation rides on top
@@ -352,11 +357,12 @@ export function Avatar({
       // can be quick without the vowel identity flickering.
       // The jaw rides under the vowels as a floor: with every vowel at zero
       // the lips still part slightly, so the mouth line never disappears.
-      expressions.setValue('aa', Math.min(1, mouth.aa + mouth.jaw))
-      expressions.setValue('ih', mouth.ih)
-      expressions.setValue('ou', mouth.ou)
-      expressions.setValue('ee', mouth.ee)
-      expressions.setValue('oh', mouth.oh)
+      const shape = mouthShape(mouth)
+      expressions.setValue('aa', shape.aa)
+      expressions.setValue('ih', shape.ih)
+      expressions.setValue('ou', shape.ou)
+      expressions.setValue('ee', shape.ee)
+      expressions.setValue('oh', shape.oh)
 
       // 'happy' and 'relaxed' are authored as closed-eye expressions on many
       // models, so they are held well below full weight; the others reshape
@@ -395,7 +401,7 @@ export function Avatar({
     const lookAt = vrm.lookAt
     if (lookAt) {
       lookAt.lookAt(camera.getWorldPosition(focus.current))
-      const aim = gaze.current.update(activity, delta, 0, false)
+      const aim = gaze.current.update(activity, delta, lip.current.pauseSeconds, accent.accent > 0)
       blinkCtl.onSaccade(gaze.current.lastSaccadeDegrees)
       lookAt.yaw += aim.yaw
       lookAt.pitch += aim.pitch
