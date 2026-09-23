@@ -88,12 +88,10 @@ class Settings(BaseSettings):
     # Flux turn detection. A higher threshold clips fewer words off the end of
     # a sentence but waits longer before answering.
     #
-    # Deepgram's high-reliability pairing. A lower threshold answers sooner
-    # but splits a sentence at every pause for thought, and being talked over
-    # is worse than waiting. The timeout is how long a pause mid-thought may
-    # run before the turn is closed regardless.
-    deepgram_stt_eot_threshold: Annotated[float, Field(ge=0.5, le=1.0)] = 0.85
-    deepgram_stt_eot_timeout_ms: Annotated[int, Field(ge=500, le=60_000)] = 8_000
+    # Start with Flux's 0.7 confidence threshold. The shorter silence fallback
+    # favors conversational responsiveness; increase it for frequent pauses.
+    deepgram_stt_eot_threshold: Annotated[float, Field(ge=0.5, le=1.0)] = 0.7
+    deepgram_stt_eot_timeout_ms: Annotated[int, Field(ge=500, le=60_000)] = 2_000
     # Confidence at which Flux says the turn has probably ended, a beat before
     # it is sure. A reply is drafted from that moment and either committed when
     # the real end arrives or thrown away if the speaker carries on.

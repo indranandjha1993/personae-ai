@@ -256,3 +256,15 @@ distinguish them; this needs testing with the actual room and microphone.
 `PERSONAE_ALLOW_VOICE_INTERRUPTION=false` remains an explicit opt-in for turn-taking:
 microphone audio is replaced with silence during replies. It is not the recommended
 setting when interruption is required.
+
+## Response latency
+
+`PERSONAE_DEEPGRAM_STT_EOT_THRESHOLD=0.7` and
+`PERSONAE_DEEPGRAM_STT_EOT_TIMEOUT_MS=2000` favor prompt turn completion.
+The timeout is a silence fallback, not a total response-time guarantee; detected
+speech resets it, including TV dialogue. Increase it if pauses split your sentences.
+Speculative generation remains off to avoid extra model calls and false starts.
+
+Backend `first_audio_ms` measures time after the confirmed transcript, excluding
+end-of-speech detection and browser playback. Use it alongside Flux turn logs and
+browser measurements when comparing changes. See [Flux parameter documentation](https://developers.deepgram.com/docs/flux/configuration).

@@ -60,11 +60,10 @@ def test_eager_end_of_turn_can_be_switched_on(monkeypatch: pytest.MonkeyPatch) -
     assert Settings().deepgram_stt_eager_eot_threshold == 0.4
 
 
-def test_turn_detection_is_patient_by_default() -> None:
-    """A lower threshold splits a sentence at every pause for thought; being
-    talked over is worse than waiting."""
-    assert Settings().deepgram_stt_eot_threshold == 0.85
-    assert Settings().deepgram_stt_eot_timeout_ms == 8_000
+def test_turn_detection_uses_responsive_defaults() -> None:
+    """A short silence fallback avoids an eight-second wait on uncertain turns."""
+    assert Settings().deepgram_stt_eot_threshold == 0.7
+    assert Settings().deepgram_stt_eot_timeout_ms == 2_000
 
 
 def test_an_eager_threshold_above_the_final_one_is_refused(
