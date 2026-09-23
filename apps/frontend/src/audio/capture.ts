@@ -7,6 +7,8 @@
  * is cheaper and more predictable than doing it downstream.
  */
 
+import { recordMicrophone } from '../diagnostics'
+
 const CAPTURE_SAMPLE_RATE = 16_000
 const WORKLET_URL = '/pcm-capture.worklet.js'
 
@@ -41,35 +43,45 @@ export async function startCapture(
     },
   })
 
-  const context = new AudioContext({ sampleRate: CAPTURE_SAMPLE_RATE })
-  try {
-    await context.audioWorklet.addModule(WORKLET_URL)
-  } catch (error) {
-    // Release the microphone if the worklet fails to load, rather than
-    // leaving the recording indicator on with nothing listening.
-    stream.getTracks().forEach((track) => { track.stop() })
-    await context.close()
-    throw error
-  }
-
-  const source = context.createMediaStreamSource(stream)
-  const worklet = new AudioWorkletNode(context, 'pcm-capture')
-  // The worklet transfers each frame's buffer, so it is a plain ArrayBuffer
-  // and can go straight onto the socket.
-  worklet.port.onmessage = (event: MessageEvent<Int16Array<ArrayBuffer>>) => { onFrame(event.data) }
-  source.connect(worklet)
-
+  let context: AudioContext | undefined
+  let source: MediaStreamAudioSourceNode | undefined
+  let worklet: AudioWorkletNode | undefined
   let stopped = false
-  return {
-    sampleRate: context.sampleRate,
-    stop: () => {
-      if (stopped) return
-      stopped = true
-      worklet.port.onmessage = null
-      source.disconnect()
-      worklet.disconnect()
-      stream.getTracks().forEach((track) => { track.stop() })
-      void context.close()
-    },
+  const stop = () => {
+    if (stopped) return
+    stopped = true
+    if (worklet) worklet.port.onmessage = null
+    source?.disconnect()
+    worklet?.disconnect()
+    stream.getTracks().forEach((track) => { track.stop() })
+    if (context) void context.close().catch(() => {})
+  }
+  try {
+    context = new AudioContext({ sampleRate: CAPTURE_SAMPLE_RATE })
+    // Never tell STT that a different-rate stream is 16 kHz.
+    if (context.sampleRate !== CAPTURE_SAMPLE_RATE) {
+      throw new Error('This browser could not start a 16 kHz microphone stream.')
+    }
+    await context.resume()
+    await context.audioWorklet.addModule(WORKLET_URL)
+    source = context.createMediaStreamSource(stream)
+    worklet = new AudioWorkletNode(context, 'pcm-capture')
+    worklet.port.onmessage = (event: MessageEvent<Int16Array<ArrayBuffer>>) => {
+      if (!stopped) onFrame(event.data)
+    }
+    source.connect(worklet)
+    const track = stream.getAudioTracks()[0]
+    const settings = track?.getSettings()
+    recordMicrophone({
+      label: track?.label ?? 'Unknown microphone',
+      echoCancellation: settings?.echoCancellation ?? null,
+      noiseSuppression: settings?.noiseSuppression ?? null,
+      autoGainControl: settings?.autoGainControl ?? null,
+      captureSampleRate: context.sampleRate,
+    })
+    return { sampleRate: context.sampleRate, stop }
+  } catch (error) {
+    stop()
+    throw error
   }
 }

@@ -235,16 +235,24 @@ If `PERSONAE_ACCESS_TOKEN` is configured, open the page with `?token=<your-token
 the browser forwards that explicit token to its conversation WebSocket. Do not
 publish that URL or embed the server token in frontend build variables.
 
-## Noisy rooms
+## Full-duplex audio in noisy rooms
 
-Set `PERSONAE_BARGE_IN_ENABLED=false` and `PERSONAE_MICROPHONE_AUTO_GAIN=false`
-for turn-taking in rooms with background speech. The browser sends silence while
-an answer is being generated or played, and the server ignores background
-transcripts during generation. Wait until the status returns to Listening before
-speaking. This deliberately disables hands-free interruption; End conversation
-still stops playback immediately. Set both to `true` to restore the previous behavior.
+Keep `PERSONAE_BARGE_IN_ENABLED=true` to listen while the avatar speaks and
+interrupt replies. With a nearby headset microphone, `PERSONAE_MICROPHONE_AUTO_GAIN=false`
+avoids requesting automatic amplification of quieter input. Echo cancellation
+and noise suppression are requested independently and remain on.
 
-Echo cancellation and noise suppression remain requested from the browser, which
-may apply these constraints differently across devices. Disabling automatic gain
-may make quiet or distant speech harder to hear. This is not speaker identification:
-TV dialogue can still be recognized while Listening. Real-room testing is required.
+Open the page with `?diagnostics` and select Download measurements after starting
+a conversation. The local JSON includes the microphone label and the processing
+settings reported by the browser. `null` means the browser did not report that
+setting; it does not prove the feature is enabled. Confirm the microphone label
+matches the headset, not the laptop. These diagnostics contain no recorded audio.
+
+Browser noise suppression is not speaker identification. TV dialogue can still
+be transcribed and cause interruptions, especially when it is as clear as the
+user's speech. A volume threshold or generic speech detector cannot reliably
+distinguish them; this needs testing with the actual room and microphone.
+
+`PERSONAE_BARGE_IN_ENABLED=false` remains an explicit opt-in for turn-taking:
+microphone audio is replaced with silence during replies. It is not the recommended
+setting when interruption is required.

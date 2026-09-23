@@ -1,4 +1,16 @@
 /** Bounded, local measurements. No transcripts, credentials or remote telemetry. */
+interface MicrophoneDiagnostics {
+  label: string
+  echoCancellation: boolean | string | null
+  noiseSuppression: boolean | null
+  autoGainControl: boolean | null
+  captureSampleRate: number
+}
+let microphone: MicrophoneDiagnostics | null = null
+/** Device information stays in this browser and is exported only on request. */
+export function recordMicrophone(settings: MicrophoneDiagnostics): void {
+  microphone = settings
+}
 const samples = new Map<string, number[]>()
 export function recordMetric(name: string, milliseconds: number): void {
   if (!Number.isFinite(milliseconds) || milliseconds < 0) return
@@ -17,7 +29,7 @@ export function metricSummary(): Record<string, { count: number; p50: number; p9
   }))
 }
 export function downloadMetrics(): void {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(metricSummary(), null, 2)],
+  const url = URL.createObjectURL(new Blob([JSON.stringify({ metrics: metricSummary(), microphone }, null, 2)],
     { type: 'application/json' }))
   const anchor = document.createElement('a')
   anchor.href = url
