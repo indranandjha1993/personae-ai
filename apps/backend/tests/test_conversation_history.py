@@ -1,6 +1,6 @@
 """Conversation history for multi-turn exchanges."""
 
-from personae.conversation import History, Turn
+from personae.conversation_history import History, Turn
 
 
 def test_starts_empty() -> None:

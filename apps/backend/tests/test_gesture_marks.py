@@ -8,7 +8,7 @@ marker never reaches the ear or the screen.
 from personae.expression import infer
 from personae.packs.loader import load_packs
 from personae.packs.models import Character
-from personae.speech import gesture_marks, strip_gesture_marks
+from personae.speech_text import gesture_marks, strip_gesture_marks
 
 
 def _character() -> Character:

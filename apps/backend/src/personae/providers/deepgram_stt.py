@@ -1,28 +1,16 @@
-"""Deepgram speech-to-text and text-to-speech.
-
-Uses the v7 SDK, which is async-native: `listen.v1.connect` and
-`speak.v1.connect` are async context managers rather than the callback-based
-clients of earlier majors.
-"""
+"""Deepgram Nova streaming speech-to-text and utterance assembly."""
 
 import asyncio
-import logging
 from collections.abc import AsyncIterator, Sequence
 
 from deepgram import AsyncDeepgramClient
-from deepgram.speak.v1.types.speak_v1text import SpeakV1Text
 
-from personae.protocol import PLAYBACK_SAMPLE_RATE
-from personae.providers.base import Heard, Speaker, SynthesizingSpeaker
-
-logger = logging.getLogger(__name__)
+from personae.providers.base import Heard
 
 STT_SAMPLE_RATE = 16_000
 
-# Deepgram closes an idle socket after 10s; keep well inside that window.
-KEEPALIVE_INTERVAL_S = 5.0
 
-TTS_SAMPLE_RATE = PLAYBACK_SAMPLE_RATE
+KEEPALIVE_INTERVAL_S = 5.0
 
 
 class DeepgramStt:
@@ -116,38 +104,6 @@ class DeepgramStt:
             if pending is not None:
                 pending.cancel()
         await connection.send_close_stream()  # type: ignore[attr-defined]
-
-
-class DeepgramTts:
-    """Streaming speech synthesis."""
-
-    def __init__(self, api_key: str, voice: str = "aura-2-thalia-en") -> None:
-        self._client = AsyncDeepgramClient(api_key=api_key)
-        self._voice = voice
-
-    def voice_for(self, requested: str) -> str:
-        """A character's own voice wins; the configured one fills the gap."""
-        return requested or self._voice
-
-    async def open(self, voice: str, rate: float = 1.0, expressivity: int | None = None) -> Speaker:
-        # Aura connects per utterance; expressivity is a Flux control.
-        return SynthesizingSpeaker(self.synthesize, self.voice_for(voice), rate)
-
-    async def synthesize(self, text: str, voice: str, rate: float = 1.0) -> AsyncIterator[bytes]:
-        # A character's configured voice wins; the constructor default is only
-        # a fallback for packs that do not name one.
-        async with self._client.speak.v1.connect(
-            model=self.voice_for(voice),
-            encoding="linear16",
-            sample_rate=TTS_SAMPLE_RATE,
-            speed=rate,
-        ) as connection:
-            await connection.send_text(SpeakV1Text(type="Speak", text=text))
-            await connection.send_flush()
-            await connection.send_close()
-            async for message in connection:
-                if isinstance(message, bytes):
-                    yield message
 
 
 class UtteranceBuffer:

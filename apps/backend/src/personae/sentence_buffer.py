@@ -31,6 +31,7 @@ _ABBREVIATIONS = (
 # arrived so far. It does not end mid-number, inside an ellipsis, after a
 # single initial, or after one of the abbreviations above.
 _SENTENCE_END = re.compile(
+    r"[。\uff01\uff1f।؟]|"  # sentence marks used without following whitespace
     r"(?<!\d)"  # not a decimal point
     r"(?<![A-Z])"  # not a lone initial: J. R. R.
     r"(?<!\.\.)"  # not the tail of an ellipsis

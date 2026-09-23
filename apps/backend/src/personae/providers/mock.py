@@ -12,7 +12,7 @@ import asyncio
 import math
 from collections.abc import AsyncIterator, Sequence
 
-from personae.conversation import Message
+from personae.conversation_history import Message
 from personae.protocol import PLAYBACK_SAMPLE_RATE
 from personae.providers.base import Heard, Speaker, SynthesizingSpeaker
 

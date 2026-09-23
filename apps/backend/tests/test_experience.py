@@ -12,7 +12,6 @@ def test_default_experience() -> None:
     assert config == {
         "character_id": "bundled/seed",
         "appearance_id": "bundled/seed",
-        "voice_id": "default",
         "quality": "auto",
         "allow_voice_interruption": True,
         "microphone_auto_volume": True,
@@ -26,20 +25,19 @@ def test_env_selects_independent_experience(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setenv("PERSONAE_APPEARANCE_ID", "bundled/analyst")
     monkeypatch.setenv("PERSONAE_RENDER_QUALITY", "low")
     monkeypatch.setenv("PERSONAE_LOCAL_TTS_BASE_URL", "http://localhost:8880/v1")
-    monkeypatch.setenv("PERSONAE_VOICE_ID", "local:af_heart")
+    monkeypatch.setenv("PERSONAE_TTS_PROVIDER", "local")
     with TestClient(create_app()) as client:
         config = client.get("/characters").json()["experience"]
     assert config == {
         "character_id": "bundled/mentor",
         "appearance_id": "bundled/analyst",
-        "voice_id": "local:af_heart",
         "quality": "low",
         "allow_voice_interruption": False,
         "microphone_auto_volume": False,
     }
 
 
-@pytest.mark.parametrize("field", ["CHARACTER_ID", "APPEARANCE_ID", "VOICE_ID", "RENDER_QUALITY"])
+@pytest.mark.parametrize("field", ["CHARACTER_ID", "APPEARANCE_ID", "RENDER_QUALITY"])
 def test_bad_selection_fails_at_boot(monkeypatch: pytest.MonkeyPatch, field: str) -> None:
     monkeypatch.setenv(f"PERSONAE_{field}", "missing")
     with pytest.raises(ValueError, match=r"PERSONAE_|render_quality"), TestClient(create_app()):

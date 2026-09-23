@@ -7,7 +7,7 @@ can be pinned down here.
 
 from dataclasses import dataclass
 
-from personae.providers.deepgram import _transcript_of
+from personae.providers.deepgram_stt import _transcript_of
 
 
 @dataclass
@@ -59,7 +59,7 @@ def test_fragments_are_joined_into_one_utterance() -> None:
     Answering each one spawns overlapping replies that talk over each other and
     over the person still speaking.
     """
-    from personae.providers.deepgram import UtteranceBuffer
+    from personae.providers.deepgram_stt import UtteranceBuffer
 
     buffer = UtteranceBuffer()
     first = _words("what I wanted to ask")
@@ -73,7 +73,7 @@ def test_fragments_are_joined_into_one_utterance() -> None:
 
 
 def test_the_buffer_empties_after_an_utterance() -> None:
-    from personae.providers.deepgram import UtteranceBuffer
+    from personae.providers.deepgram_stt import UtteranceBuffer
 
     buffer = UtteranceBuffer()
     done = _words("hello")
@@ -88,13 +88,13 @@ def test_the_buffer_empties_after_an_utterance() -> None:
 
 
 def test_interim_results_are_ignored() -> None:
-    from personae.providers.deepgram import UtteranceBuffer
+    from personae.providers.deepgram_stt import UtteranceBuffer
 
     assert UtteranceBuffer().take(_words("guess")) is None
 
 
 def test_a_silent_utterance_yields_nothing() -> None:
-    from personae.providers.deepgram import UtteranceBuffer
+    from personae.providers.deepgram_stt import UtteranceBuffer
 
     buffer = UtteranceBuffer()
     empty = _words("")

@@ -7,14 +7,14 @@ import { DEFAULT_AVATAR } from './avatar/config'
 
 vi.mock('./avatar/AvatarStage', () => ({ AvatarStage: ({ avatar, quality }: { avatar: { model_url: string }; quality: string }) =>
   <div data-testid="avatar" data-quality={quality}>{avatar.model_url}</div> }))
-vi.mock('./useConversation', () => ({ useConversation: (characterId: string, voiceId: string) => {
+vi.mock('./useConversation', () => ({ useConversation: (characterId: string) => {
   const [status, setStatus] = useState('idle')
   const [transcript, setTranscript] = useState('')
   return {
     status, transcript, reply: '', gesture: 'idle', emotion: 'neutral', detail: '',
     features: () => ({ rms: 0 }), mouthCues: () => null, inputLevel: () => 0,
     spokenSoFar: '', turnFinished: false, turnId: 0, cameraStream: null, cameraOn: false,
-    toggleCamera: () => {}, start: () => { setStatus('listening'); setTranscript(`${characterId} with ${voiceId}`) },
+    toggleCamera: () => {}, start: () => { setStatus('listening'); setTranscript(characterId) },
     stop: () => { setStatus('idle') },
   }
 } }))
@@ -22,7 +22,7 @@ const characters = [
   { id: 'bundled/coach', display_name: 'Coach', avatar: { ...DEFAULT_AVATAR, model_url: '/models/coach.vrm' } },
   { id: 'bundled/seed', display_name: 'Wren', avatar: DEFAULT_AVATAR },
 ]
-const experience = { allow_voice_interruption: true, microphone_auto_volume: true, character_id: 'bundled/coach', appearance_id: 'bundled/seed', voice_id: 'local:af_heart', quality: 'low' }
+const experience = { allow_voice_interruption: true, microphone_auto_volume: true, character_id: 'bundled/coach', appearance_id: 'bundled/seed', quality: 'low' }
 function setupFetch(config: unknown = experience) {
   vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true,
     json: () => Promise.resolve({ characters, experience: config }),
@@ -39,7 +39,7 @@ it('uses server settings independently and exposes no customization controls', a
   expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
   expect(screen.queryByText('Make it yours')).not.toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Start conversation' }))
-  expect(screen.getByText('bundled/coach with local:af_heart')).toBeInTheDocument()
+  expect(screen.getByText('bundled/coach')).toBeInTheDocument()
   expect(fetch).toHaveBeenCalledTimes(1)
 })
 

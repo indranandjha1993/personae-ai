@@ -7,7 +7,7 @@ correct, not that a particular vendor is reachable.
 import httpx
 import pytest
 
-from personae.providers.openai_compat import OpenAiCompatibleLlm, _fragment_of
+from personae.providers.openai_compatible_llm import OpenAiCompatibleLlm, _fragment_of
 
 
 def _sse(*payloads: str) -> bytes:

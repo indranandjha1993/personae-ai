@@ -48,7 +48,7 @@ holding paid credentials cannot really be contributed to.
 | Layer | Choice |
 |---|---|
 | Backend | Python 3.13, FastAPI, WebSockets, `uv` |
-| Speech | Deepgram Flux streaming STT + TTS (async SDK) |
+| Speech | Selectable Deepgram / ElevenLabs streaming STT; independent TTS |
 | Language model | Any OpenAI- or Anthropic-compatible endpoint, hosted or local |
 | Frontend | React 19, TypeScript, Vite |
 | Audio | Web Audio API — AudioWorklet capture, clock-scheduled playback |
@@ -108,7 +108,8 @@ PERSONAE_BACKEND=http://127.0.0.1:8100 npm run dev                    # frontend
 To use real services, copy `.env.example` to `.env` and add your keys:
 
 ```bash
-PERSONAE_DEEPGRAM_API_KEY=your-key          # transcription and speech
+PERSONAE_STT_PROVIDER=deepgram             # deepgram | elevenlabs | mock
+PERSONAE_DEEPGRAM_API_KEY=your-key          # Deepgram transcription and speech
 
 PERSONAE_LLM_API_KEY=your-key               # the language model
 PERSONAE_LLM_BASE_URL=https://api.openai.com/v1
@@ -364,3 +365,11 @@ Pixel Streaming player boundary, and downloadable latency measurements are descr
 in [docs/rendering.md](docs/rendering.md). Default development still runs without
 credentials, avatar files, Unreal, or Rhubarb. Live photorealism and provider latency
 must be measured with supplied assets and deployments.
+
+For ElevenLabs listening, see [STT provider configuration](docs/rendering.md#listening-provider). STT and TTS are independently selectable.
+
+Server defaults (`python -m personae`): `PERSONAE_SERVER_HOST=127.0.0.1`,
+`PERSONAE_SERVER_PORT=8000`, `PERSONAE_LOG_LEVEL=INFO`. This entry point reads
+`.env`. Direct `uvicorn` commands use their CLI host/port flags instead.
+Docker Compose fixes the internal backend to `0.0.0.0:8000` for its proxy and
+health check; `PERSONAE_PORT=47465` controls the published webpage port.

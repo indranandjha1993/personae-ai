@@ -12,7 +12,7 @@ from collections.abc import AsyncIterator, Sequence
 
 import httpx
 
-from personae.conversation import Message
+from personae.conversation_history import Message
 from personae.providers.base import ProviderError
 
 logger = logging.getLogger(__name__)

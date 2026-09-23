@@ -6,9 +6,9 @@ nothing in it, and reaches the listener as an unexplained silence.
 
 import pytest
 
-from personae.providers.anthropic_compat import _fragment_of as anthropic_fragment
+from personae.providers.anthropic_compatible_llm import _fragment_of as anthropic_fragment
 from personae.providers.base import ProviderError
-from personae.providers.openai_compat import _fragment_of as openai_fragment
+from personae.providers.openai_compatible_llm import _fragment_of as openai_fragment
 
 
 def test_an_anthropic_error_event_is_raised() -> None:

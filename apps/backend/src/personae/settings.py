@@ -33,9 +33,8 @@ def env_file_path() -> Path:
 class Settings(BaseSettings):
     """Runtime configuration.
 
-    Every provider defaults to ``mock`` so the application runs, and the whole
-    test suite passes, without any credentials. Supplying keys and switching a
-    mode to ``live`` is the only step needed to talk to real services.
+    Providers without credentials use demo implementations. Speech provider
+    selection is independent for listening and speaking.
     """
 
     model_config = SettingsConfigDict(
@@ -46,14 +45,24 @@ class Settings(BaseSettings):
         frozen=True,
     )
 
+    server_host: str = "127.0.0.1"
+    server_port: Annotated[int, Field(ge=1, le=65535)] = 8000
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+
     # Deployment-owned experience; no browser customization panel.
     character_id: str = "bundled/seed"
     appearance_id: str = ""
-    voice_id: str = "default"
     render_quality: Literal["auto", "high", "low"] = "auto"
 
     allow_voice_interruption: bool = True
     microphone_auto_volume: bool = True
+
+    stt_provider: Literal["deepgram", "elevenlabs", "mock"] = "deepgram"
+    elevenlabs_api_key: str | None = None
+    elevenlabs_stt_model: Literal["scribe_v2_realtime"] = "scribe_v2_realtime"
+    elevenlabs_stt_language: str = ""
+    elevenlabs_stt_silence_seconds: Annotated[float, Field(ge=0.3, le=3.0)] = 0.6
+    elevenlabs_stt_filter_background_audio: bool = True
 
     deepgram_api_key: str | None = None
     tts_provider: Literal["deepgram", "elevenlabs", "local", "mock"] = "deepgram"
@@ -61,8 +70,6 @@ class Settings(BaseSettings):
     local_tts_api_key: str | None = None
     local_tts_model: str = "kokoro"
     local_tts_voice: str = "af_heart"
-    local_tts_voices: tuple[str, ...] = ("af_heart", "af_bella")
-    elevenlabs_tts_api_key: str | None = None
     elevenlabs_tts_model: str = "eleven_flash_v2_5"
     elevenlabs_tts_voice: str = ""
     llm_vision: bool = False
@@ -70,8 +77,7 @@ class Settings(BaseSettings):
     rhubarb_path: str = "rhubarb"
     rhubarb_recognizer: Literal["phonetic", "pocketSphinx"] = "phonetic"
 
-    # Speech model and voice. A character pack may name its own voice, in which
-    # case this is only the fallback.
+    # Deployment-owned speech model and voice.
     deepgram_stt_model: str = "flux-general-en"
     # Deepgram transcribes well over a hundred languages, but not every one on
     # every model: Spanish and French need nova-2, where German and Japanese
@@ -129,7 +135,8 @@ class Settings(BaseSettings):
     def _language_matches_the_model(self) -> "Settings":
         """Catch a pairing the socket would refuse with an opaque 400."""
         if (
-            self.deepgram_stt_model.startswith("nova-3")
+            self.stt_provider == "deepgram"
+            and self.deepgram_stt_model.startswith("nova-3")
             and self.deepgram_stt_language in _NOVA_2_ONLY
         ):
             raise ValueError(
@@ -139,7 +146,8 @@ class Settings(BaseSettings):
         # The Flux voices are English-only. Asking for another language would
         # otherwise be honoured silently by reading it in an English accent.
         if (
-            self.tts_provider == "deepgram"
+            self.stt_provider == "deepgram"
+            and self.tts_provider == "deepgram"
             and self.deepgram_tts_voice.startswith("flux-")
             and self.deepgram_stt_language != "en"
         ):

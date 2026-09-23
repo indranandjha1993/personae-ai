@@ -152,7 +152,7 @@ def test_a_disconnect_releases_the_session(client: TestClient) -> None:
 
 async def test_a_provider_failure_is_reported_not_fatal() -> None:
     """A transient model error must not kill the conversation silently."""
-    from personae.live import LiveSession
+    from personae.live_session import LiveSession
     from personae.main import REPO_ROOT
     from personae.packs.loader import load_packs
     from personae.providers.mock import MockStt, MockTts

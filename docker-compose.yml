@@ -7,6 +7,9 @@ services:
       dockerfile: apps/backend/Dockerfile
     env_file: .env
     environment:
+      # Internal address is fixed to match the frontend proxy and health check.
+      PERSONAE_SERVER_HOST: 0.0.0.0
+      PERSONAE_SERVER_PORT: 8000
       # Bare defaults so the stack still runs with an empty .env: without keys
       # each provider falls back to a stand-in.
       PERSONAE_LLM_WIRE: ${PERSONAE_LLM_WIRE:-openai}

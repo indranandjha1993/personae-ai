@@ -1,6 +1,6 @@
 """Splitting a reply as it streams, so speech can start before it ends."""
 
-from personae.sentences import SentenceBuffer
+from personae.sentence_buffer import SentenceBuffer
 
 
 def _feed(buffer: SentenceBuffer, *fragments: str) -> list[str]:
@@ -95,3 +95,13 @@ def test_a_held_dot_run_is_still_released_at_the_end() -> None:
     spoken.append(buffer.flush())
 
     assert "".join(spoken) == "Trailing off.."
+
+
+def test_multilingual_sentence_marks_without_spaces() -> None:
+    buffer = SentenceBuffer()
+    assert list(buffer.feed("नमस्ते।你好。元気ですか\uff1f")) == [
+        "नमस्ते।",
+        "你好。",
+        "元気ですか\uff1f",
+    ]
+    assert buffer.flush() == ""

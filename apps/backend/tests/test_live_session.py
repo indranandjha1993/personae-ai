@@ -3,8 +3,8 @@
 import asyncio
 from collections.abc import AsyncIterator, Sequence
 
-from personae.conversation import Message
-from personae.live import MAX_PENDING_AUDIO, LiveSession
+from personae.conversation_history import Message
+from personae.live_session import MAX_PENDING_AUDIO, LiveSession
 from personae.packs.loader import load_packs
 from personae.packs.models import Character
 from personae.protocol import ServerMessage
@@ -672,9 +672,9 @@ class FlakyStt:
 
 async def test_a_dropped_recogniser_is_reconnected_not_fatal() -> None:
     """A socket that dies ends a moment of listening, not the conversation."""
-    from personae import live
+    from personae import live_session
 
-    setattr(live, "RECONNECT_DELAY_S", 0.01)  # noqa: B010 - module constant, for speed
+    setattr(live_session, "RECONNECT_DELAY_S", 0.01)  # noqa: B010 - module constant, for speed
     stt = FlakyStt()
     session = LiveSession(_character(), stt, SlowLlm(["ok"], 0.0), SilentTts())
     await _offer_turns(session, 2)
@@ -687,9 +687,9 @@ async def test_a_dropped_recogniser_is_reconnected_not_fatal() -> None:
 
 
 async def test_a_recogniser_that_keeps_dying_is_reported() -> None:
-    from personae import live
+    from personae import live_session
 
-    setattr(live, "RECONNECT_DELAY_S", 0.01)  # noqa: B010 - module constant, for speed
+    setattr(live_session, "RECONNECT_DELAY_S", 0.01)  # noqa: B010 - module constant, for speed
 
     class DeadStt:
         def transcribe(
@@ -710,7 +710,7 @@ async def test_a_recogniser_that_keeps_dying_is_reported() -> None:
 
 
 def test_echo_is_her_words_and_only_her_words() -> None:
-    from personae.live import is_echo
+    from personae.live_session import is_echo
 
     spoken = "You said hello. What are we untangling today?"
     assert is_echo("you said hello", spoken)
@@ -718,3 +718,12 @@ def test_echo_is_her_words_and_only_her_words() -> None:
     assert not is_echo("wait a moment", spoken)
     assert not is_echo("hello wait", spoken)
     assert not is_echo("", spoken)
+
+
+def test_echo_detection_preserves_non_latin_words() -> None:
+    from personae.live_session import is_echo
+
+    assert is_echo("नमस्ते", "नमस्ते दुनिया")
+    assert not is_echo("रुको", "नमस्ते दुनिया")
+    assert is_echo("你好", "你好")
+    assert not is_echo("等等", "你好")

@@ -10,8 +10,9 @@ from typing import Any, ClassVar
 
 import pytest
 
+from personae.providers.deepgram_flux_stt import FluxStt
+from personae.providers.deepgram_flux_tts import FluxTts, _supported_speed
 from personae.providers.factory import build_stt, build_tts
-from personae.providers.flux import FluxStt, FluxTts, _supported_speed
 from personae.settings import Settings
 
 
@@ -135,7 +136,8 @@ def test_the_nova_and_aura_clients_are_still_reachable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Aura-2 remains the only way to speak anything but English."""
-    from personae.providers.deepgram import DeepgramStt, DeepgramTts
+    from personae.providers.deepgram_stt import DeepgramStt
+    from personae.providers.deepgram_tts import DeepgramTts
 
     monkeypatch.setenv("PERSONAE_DEEPGRAM_API_KEY", "x")
     monkeypatch.setenv("PERSONAE_DEEPGRAM_STT_MODEL", "nova-3")
@@ -470,7 +472,7 @@ async def test_a_quiet_turn_is_called_out(
     async def audio() -> AsyncIterator[bytes]:
         yield b"\x01\x00" * 800  # near-silence
 
-    with caplog.at_level(logging.INFO, logger="personae.providers.flux"):
+    with caplog.at_level(logging.INFO, logger="personae.providers.deepgram_flux_stt"):
         [item async for item in stt.transcribe(audio())]
 
     assert any("very quiet" in record.message for record in caplog.records)

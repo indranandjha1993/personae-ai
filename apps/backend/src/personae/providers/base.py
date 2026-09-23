@@ -9,7 +9,7 @@ from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
-from personae.conversation import Message
+from personae.conversation_history import Message
 from personae.speech_events import SpeechChunk
 
 

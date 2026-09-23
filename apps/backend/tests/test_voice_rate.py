@@ -4,8 +4,8 @@ from collections.abc import AsyncIterator, Sequence
 
 import pytest
 
-from personae.conversation import Message
-from personae.live import LiveSession
+from personae.conversation_history import Message
+from personae.live_session import LiveSession
 from personae.packs.loader import load_packs
 from personae.protocol import ServerMessage
 from personae.providers.base import Heard, Speaker, SynthesizingSpeaker

@@ -2,7 +2,8 @@
 
 import pytest
 
-from personae.providers.deepgram import DeepgramStt, DeepgramTts
+from personae.providers.deepgram_stt import DeepgramStt
+from personae.providers.deepgram_tts import DeepgramTts
 from personae.settings import Settings
 
 
@@ -51,7 +52,7 @@ def test_the_transcriber_keeps_its_configured_model() -> None:
     [
         ("DEEPGRAM_STT_MODEL", "deepgram_stt_model", "nova-2"),
         ("DEEPGRAM_TTS_VOICE", "deepgram_tts_voice", "aura-2-luna-en"),
-        ("ELEVENLABS_TTS_API_KEY", "elevenlabs_tts_api_key", "test-key"),
+        ("ELEVENLABS_API_KEY", "elevenlabs_api_key", "test-key"),
         ("ELEVENLABS_TTS_MODEL", "elevenlabs_tts_model", "test-model"),
         ("ELEVENLABS_TTS_VOICE", "elevenlabs_tts_voice", "test-voice"),
         ("DEEPGRAM_STT_EOT_TIMEOUT_MS", "deepgram_stt_eot_timeout_ms", "9000"),
@@ -65,3 +66,20 @@ def test_provider_scoped_names(
 ) -> None:
     monkeypatch.setenv(f"PERSONAE_{suffix}", value)
     assert str(getattr(Settings(), field)) == value
+
+
+def test_one_elevenlabs_key_authenticates_both_speech_adapters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from personae.providers.elevenlabs_stt import ElevenLabsStt
+    from personae.providers.elevenlabs_tts import ElevenLabsTts
+    from personae.providers.factory import build_stt, build_tts
+    from personae.providers.status import stt_mode, tts_mode
+
+    monkeypatch.setenv("PERSONAE_ELEVENLABS_API_KEY", "shared-test-key")
+    settings = Settings(
+        stt_provider="elevenlabs", tts_provider="elevenlabs", elevenlabs_tts_voice="voice-id"
+    )
+    assert stt_mode(settings) == tts_mode(settings) == "live"
+    assert isinstance(build_stt(settings), ElevenLabsStt)
+    assert isinstance(build_tts(settings), ElevenLabsTts)

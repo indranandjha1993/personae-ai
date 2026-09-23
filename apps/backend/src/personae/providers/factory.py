@@ -1,27 +1,34 @@
 """Provider construction.
 
-Selection happens once at startup so a misconfigured deployment fails at boot
-with a precise message, rather than on the first user utterance.
+Provider settings select adapters. Missing credentials use demo implementations;
+configured credentials with missing required parameters fail explicitly.
 """
 
 from personae.providers.base import LlmProvider, SttProvider, TtsProvider
 from personae.providers.mock import MockLlm, MockStt, MockTts
+from personae.providers.status import stt_mode
 from personae.settings import Settings
 
 
 def build_stt(settings: Settings) -> SttProvider:
-    """Live when a key is configured, a fake otherwise.
-
-    Selection follows the credentials rather than an explicit switch: a mode
-    that disagrees with the keys present is a confusing way to fail.
-    """
-    if not settings.deepgram_api_key:
+    """Select listening independently of the speaking provider."""
+    if stt_mode(settings) == "mock":
         return MockStt()
+    if settings.stt_provider == "elevenlabs":
+        from personae.providers.elevenlabs_stt import ElevenLabsStt
+
+        return ElevenLabsStt(
+            api_key=_require(settings.elevenlabs_api_key, "ELEVENLABS_API_KEY"),
+            model=settings.elevenlabs_stt_model,
+            language=settings.elevenlabs_stt_language,
+            silence_seconds=settings.elevenlabs_stt_silence_seconds,
+            filter_background_audio=settings.elevenlabs_stt_filter_background_audio,
+        )
 
     # Flux is a different endpoint with its own turn detection, so the model
     # name picks the client rather than being passed to a common one.
     if settings.deepgram_stt_model.startswith("flux-"):
-        from personae.providers.flux import FluxStt
+        from personae.providers.deepgram_flux_stt import FluxStt
 
         return FluxStt(
             api_key=_require(settings.deepgram_api_key, "DEEPGRAM_API_KEY"),
@@ -31,7 +38,7 @@ def build_stt(settings: Settings) -> SttProvider:
             eager_eot_threshold=settings.deepgram_stt_eager_eot_threshold,
         )
 
-    from personae.providers.deepgram import DeepgramStt
+    from personae.providers.deepgram_stt import DeepgramStt
 
     return DeepgramStt(
         api_key=_require(settings.deepgram_api_key, "DEEPGRAM_API_KEY"),
@@ -66,13 +73,13 @@ def _build_tts(settings: Settings) -> TtsProvider:
     if settings.tts_provider == "mock":
         return MockTts()
     if settings.tts_provider == "elevenlabs":
-        if not settings.elevenlabs_tts_api_key:
+        if not settings.elevenlabs_api_key:
             return MockTts()
-        from personae.providers.elevenlabs import ElevenLabsTts
+        from personae.providers.elevenlabs_tts import ElevenLabsTts
 
         _require(settings.elevenlabs_tts_voice, "ELEVENLABS_TTS_VOICE")
         return ElevenLabsTts(
-            settings.elevenlabs_tts_api_key,
+            settings.elevenlabs_api_key,
             settings.elevenlabs_tts_model,
             settings.elevenlabs_tts_voice,
         )
@@ -80,14 +87,14 @@ def _build_tts(settings: Settings) -> TtsProvider:
         return MockTts()
 
     if settings.deepgram_tts_voice.startswith("flux-"):
-        from personae.providers.flux import FluxTts
+        from personae.providers.deepgram_flux_tts import FluxTts
 
         return FluxTts(
             api_key=_require(settings.deepgram_api_key, "DEEPGRAM_API_KEY"),
             voice=settings.deepgram_tts_voice,
         )
 
-    from personae.providers.deepgram import DeepgramTts
+    from personae.providers.deepgram_tts import DeepgramTts
 
     return DeepgramTts(
         api_key=_require(settings.deepgram_api_key, "DEEPGRAM_API_KEY"),
@@ -104,7 +111,7 @@ def build_llm(settings: Settings) -> LlmProvider:
     _require_all((settings.llm_base_url, "LLM_BASE_URL"))
 
     if settings.llm_wire == "anthropic":
-        from personae.providers.anthropic_compat import AnthropicCompatibleLlm
+        from personae.providers.anthropic_compatible_llm import AnthropicCompatibleLlm
 
         return AnthropicCompatibleLlm(
             base_url=settings.llm_base_url or "",
@@ -113,7 +120,7 @@ def build_llm(settings: Settings) -> LlmProvider:
             vision_model=settings.vision_model,
         )
 
-    from personae.providers.openai_compat import OpenAiCompatibleLlm
+    from personae.providers.openai_compatible_llm import OpenAiCompatibleLlm
 
     return OpenAiCompatibleLlm(
         base_url=settings.llm_base_url or "",
@@ -133,4 +140,6 @@ def _require_all(*required: tuple[str | None, str]) -> None:
     missing = [name for value, name in required if not value]
     if missing:
         names = ", ".join(f"PERSONAE_{name}" for name in missing)
-        raise ValueError(f"{names} must be set when the matching provider mode is 'live'")
+        raise ValueError(
+            f"{names} must be set when credentials for the selected provider are configured"
+        )

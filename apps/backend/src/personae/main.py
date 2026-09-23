@@ -3,7 +3,6 @@
 import asyncio
 import contextlib
 import logging
-import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from hmac import compare_digest
@@ -14,7 +13,7 @@ from fastapi import FastAPI, Request, WebSocket
 from starlette.websockets import WebSocketDisconnect
 
 from personae.experience import experience_config
-from personae.live import LiveSession
+from personae.live_session import LiveSession
 from personae.packs.loader import CharacterRegistry, load_packs
 from personae.protocol import (
     MAX_FRAME_BYTES,
@@ -29,8 +28,9 @@ from personae.protocol import (
 )
 from personae.providers.base import LlmProvider, SttProvider, TtsProvider
 from personae.providers.factory import build_llm, build_stt, build_tts
+from personae.providers.status import stt_mode, tts_mode
 from personae.settings import Settings
-from personae.voices import tts_mode, voice_choices
+from personae.voices import configured_voice
 
 
 def _repo_root() -> Path:
@@ -53,7 +53,7 @@ REPO_ROOT = _repo_root()
 # own records -- including provider failures -- are silently discarded
 # whichever way the server was launched.
 logging.basicConfig(
-    level=os.environ.get("PERSONAE_LOG_LEVEL", "INFO").upper(),
+    level=Settings().log_level,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 
@@ -107,7 +107,7 @@ def create_app() -> FastAPI:
         return {
             "status": "ok",
             "providers": {
-                "stt": "live" if settings.deepgram_api_key else "mock",
+                "stt": stt_mode(settings),
                 "llm": "live" if settings.llm_api_key else "mock",
                 "tts": "mock" if tts_mode(settings) == "mock" else "live",
             },
@@ -139,15 +139,6 @@ def create_app() -> FastAPI:
             ],
         }
 
-    @app.get("/voices")
-    async def voices(request: Request) -> dict[str, object]:
-        return {
-            "voices": [
-                {"id": key, "label": choice.label, "mode": choice.mode}
-                for key, choice in voice_choices(request.state.settings).items()
-            ]
-        }
-
     @app.websocket("/ws/live/{pack}/{character}")
     async def live(socket: WebSocket, pack: str, character: str) -> None:
         settings: Settings = socket.state.settings
@@ -165,27 +156,11 @@ def create_app() -> FastAPI:
             await socket.close(code=4004, reason="unknown character")
             return
 
-        selected = socket.query_params.get("voice", "default")
-        choices = voice_choices(settings)
-        if selected not in choices:
-            await socket.close(code=4400, reason="unknown voice")
+        if "voice" in socket.query_params:
+            await socket.close(code=4400, reason="voice is configured on the server")
             return
-        choice = choices[selected]
-        tts = socket.state.tts if selected == "default" else build_tts(choice.settings)
-        if choice.voice is not None:
-            persona = persona.model_copy(
-                update={"voice": persona.voice.model_copy(update={"provider_voice": choice.voice})}
-            )
-
-        # Resolve the pack override before choosing the Deepgram wire protocol.
-        if choice.settings.tts_provider == "deepgram":
-            effective_voice = persona.voice.provider_voice or choice.settings.deepgram_tts_voice
-            if effective_voice.startswith("flux-") != choice.settings.deepgram_tts_voice.startswith(
-                "flux-"
-            ):
-                tts = build_tts(
-                    choice.settings.model_copy(update={"deepgram_tts_voice": effective_voice})
-                )
+        persona = configured_voice(persona, settings)
+        tts = socket.state.tts
 
         await socket.accept()
         await socket.send_json(ServerMessage.ready(PLAYBACK_SAMPLE_RATE).model_dump())

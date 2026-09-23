@@ -51,6 +51,8 @@ def parse_chunk(raw: object) -> SpeechChunk:
 
 
 class _VoiceSettings(BaseModel):
+    # v3 accepts discrete stability values; 0.5 is its natural setting.
+    stability: float = 0.5
     speed: float = Field(ge=0.7, le=1.2)
 
 

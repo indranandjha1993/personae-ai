@@ -1,26 +1,8 @@
-"""Only explicitly configured voices can be selected by a browser."""
+"""Session voices come only from the selected provider configuration."""
 
 import pytest
 
 from personae.settings import Settings
-from personae.voices import voice_choices
-
-
-def test_no_keys_only_advertises_demo() -> None:
-    choices = voice_choices(Settings())
-    assert list(choices) == ["default"]
-    assert choices["default"].mode == "mock"
-
-
-def test_local_voices_are_independent_of_persona() -> None:
-    settings = Settings(
-        local_tts_base_url="http://localhost:8880/v1", local_tts_voices=("af_heart", "af_bella")
-    )
-    choices = voice_choices(settings)
-    assert choices["local:af_bella"].voice == "local:af_bella"
-    assert choices["local:af_bella"].settings.tts_provider == "local"
-    assert choices["local:af_bella"].mode == "local"
-    assert "elevenlabs:default" not in choices
 
 
 async def test_local_tts_streams_pcm_without_cloud_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -52,21 +34,6 @@ async def test_local_tts_streams_pcm_without_cloud_key(monkeypatch: pytest.Monke
     finally:
         await speaker.close()
     assert b"".join(chunk for chunk in chunks if isinstance(chunk, bytes)) == b"\x01\x00\x02\x00"
-
-
-def test_voice_endpoint_contains_only_public_metadata() -> None:
-    from fastapi.testclient import TestClient
-
-    from personae.main import create_app
-
-    with TestClient(create_app()) as client:
-        response = client.get("/voices")
-    assert response.status_code == 200
-    assert response.json() == {
-        "voices": [
-            {"id": "default", "label": "Demo tone", "mode": "mock"},
-        ]
-    }
 
 
 def test_unknown_voice_is_rejected_before_session() -> None:
@@ -111,27 +78,61 @@ async def test_local_tts_surfaces_failures(
         await speaker.close()
 
 
-def test_pack_voice_family_is_resolved_before_constructing_session_tts(
+@pytest.mark.parametrize(
+    ("provider", "expected"),
+    [
+        ("deepgram", "aura-2-thalia-en"),
+        ("elevenlabs", "elevenlabs:chosen"),
+        ("local", "local:af_bella"),
+        ("mock", ""),
+    ],
+)
+def test_provider_voice_wins_over_pack(provider: str, expected: str) -> None:
+    from personae.main import REPO_ROOT
+    from personae.packs.loader import load_packs
+    from personae.voices import configured_voice
+
+    settings = Settings.model_validate(
+        {
+            "tts_provider": provider,
+            "deepgram_tts_voice": "aura-2-thalia-en",
+            "elevenlabs_tts_voice": "chosen",
+            "local_tts_voice": "af_bella",
+        }
+    )
+    character = load_packs([REPO_ROOT / "packs/bundled"]).get("bundled/seed")
+    original = character.voice.provider_voice
+    resolved = configured_voice(character, settings)
+    assert resolved.voice.provider_voice == expected
+    assert character.voice.provider_voice == original
+    assert resolved.voice.rate == character.voice.rate
+    assert resolved.persona == character.persona
+
+
+def test_session_uses_env_voice_even_when_pack_names_another_family(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from fastapi.testclient import TestClient
 
     from personae import main
+    from personae.packs.models import Character
     from personae.providers.mock import MockStt, MockTts
+    from personae.voices import configured_voice
 
-    requested: list[str] = []
+    captured: list[str] = []
 
-    def build(settings: Settings) -> MockTts:
-        requested.append(settings.deepgram_tts_voice)
-        return MockTts()
+    def resolve(character: Character, settings: Settings) -> Character:
+        resolved = configured_voice(character, settings)
+        captured.append(resolved.voice.provider_voice)
+        return resolved
 
-    monkeypatch.setenv("PERSONAE_DEEPGRAM_API_KEY", "test")
     monkeypatch.setenv("PERSONAE_DEEPGRAM_TTS_VOICE", "aura-2-thalia-en")
+    monkeypatch.setattr(main, "configured_voice", resolve)
     monkeypatch.setattr(main, "build_stt", lambda _: MockStt())
-    monkeypatch.setattr(main, "build_tts", build)
+    monkeypatch.setattr(main, "build_tts", lambda _: MockTts())
     with (
         TestClient(main.create_app()) as client,
         client.websocket_connect("/ws/live/bundled/seed") as socket,
     ):
         assert socket.receive_json()["type"] == "ready"
-    assert requested == ["aura-2-thalia-en", "flux-haley-en"]
+    assert captured == ["aura-2-thalia-en"]

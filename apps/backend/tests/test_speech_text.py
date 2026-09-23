@@ -1,6 +1,6 @@
 """Text bound for a synthesiser has to be speakable."""
 
-from personae.speech import for_speech
+from personae.speech_text import for_speech
 
 
 def test_strips_emoji_that_would_be_read_aloud() -> None:

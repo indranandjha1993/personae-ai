@@ -1,6 +1,6 @@
 # Speech and rendering integration
 
-Personae keeps React/Vite, FastAPI, Deepgram STT, and the provider boundaries.
+Personae keeps React/Vite, FastAPI, selectable streaming STT, and the provider boundaries.
 OpenRouter uses `PERSONAE_LLM_BASE_URL=https://openrouter.ai/api/v1`, the existing
 `PERSONAE_LLM_API_KEY`, and a current model ID in `PERSONAE_LLM_MODEL`. Select
 `PERSONAE_LLM_WIRE=openai`; enable `PERSONAE_LLM_VISION=true` only for models that
@@ -9,10 +9,9 @@ accept images. Existing credentials are never rewritten by this change.
 ## Speech providers and facial timing
 
 `PERSONAE_TTS_PROVIDER=elevenlabs` selects the optional ElevenLabs adapter. Set
-`PERSONAE_ELEVENLABS_TTS_API_KEY` and `PERSONAE_ELEVENLABS_TTS_VOICE`; the model defaults to
-`eleven_flash_v2_5` and is configurable. A pack may override the voice using
-`provider_voice="elevenlabs:VOICE_ID"`. Deepgram pack voice names do not get sent
-to ElevenLabs. Without the selected provider's key the voice remains a mock.
+`PERSONAE_ELEVENLABS_API_KEY` and `PERSONAE_ELEVENLABS_TTS_VOICE`; the model defaults to
+`eleven_flash_v2_5` and is configurable. The deployment's voice setting is
+authoritative; character-pack voice IDs are not sent to ElevenLabs. Without the selected provider's key the voice remains a mock.
 
 ElevenLabs uses its [stream-with-timestamps endpoint](https://elevenlabs.io/docs/api-reference/text-to-speech/stream-with-timestamps).
 The session reuses an HTTP client; cancellation closes the active response. Full
@@ -171,7 +170,8 @@ these in the repository `.env`:
 ```dotenv
 PERSONAE_CHARACTER_ID=bundled/mentor
 PERSONAE_APPEARANCE_ID=bundled/seed
-PERSONAE_VOICE_ID=default
+PERSONAE_TTS_PROVIDER=deepgram
+PERSONAE_DEEPGRAM_TTS_VOICE=flux-haley-en
 PERSONAE_RENDER_QUALITY=auto
 ```
 
@@ -182,10 +182,10 @@ another pack's avatar; leave blank to use the personality's own avatar. The thre
 bundled characters currently share one VRM model. Hosted characters manage their
 own appearance and voice; leave appearance blank for those deployments.
 
-`VOICE_ID=default` uses the selected `TTS_PROVIDER` and character pack voice.
-`deepgram:default` explicitly uses `PERSONAE_DEEPGRAM_TTS_VOICE`, `elevenlabs:default` uses
-`PERSONAE_ELEVENLABS_TTS_VOICE`, and `local:af_heart` selects a configured local voice.
-Only IDs available for configured providers are accepted; invalid IDs fail startup.
+`PERSONAE_TTS_PROVIDER` selects speech synthesis. Its corresponding
+`PERSONAE_DEEPGRAM_TTS_VOICE`, `PERSONAE_ELEVENLABS_TTS_VOICE`, or
+`PERSONAE_LOCAL_TTS_VOICE` determines the session voice. Character packs retain
+rate and expression settings but do not override the deployment's voice.
 Credentials and personality prompts stay on the backend.
 
 Low quality caps device pixel ratio at 1; Auto at 1.5; High at 2. Auto is a
@@ -204,9 +204,7 @@ Run a compatible local speech server such as
 [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI), then set
 `PERSONAE_LOCAL_TTS_BASE_URL=http://localhost:8880/v1`. When the backend runs in
 Docker and the speech server runs on the host, use `host.docker.internal` instead.
-Set `PERSONAE_LOCAL_TTS_VOICES=["af_heart","af_bella"]` to the installed voices.
-The public catalogue only exposes configured voice IDs, never credentials or
-server URLs. Select one through `PERSONAE_VOICE_ID`. Set `PERSONAE_TTS_PROVIDER=local` for the default voice to use it.
+Set `PERSONAE_TTS_PROVIDER=local` and `PERSONAE_LOCAL_TTS_VOICE` to an installed voice.
 The server must return raw mono PCM16 at 24 kHz for `response_format=pcm`.
 An unavailable configured server reports an error; it does not invoke a paid fallback.
 
@@ -220,7 +218,8 @@ asset. Existing STT/LLM provider configuration still applies.
 Provider settings use `PERSONAE_<PROVIDER>_<STT|TTS>_<SETTING>`.
 For example, `PERSONAE_DEEPGRAM_STT_MODEL`, `PERSONAE_DEEPGRAM_TTS_VOICE`,
 and `PERSONAE_ELEVENLABS_TTS_MODEL`. `PERSONAE_DEEPGRAM_API_KEY` is shared by
-Deepgram STT and TTS. Provider-independent choices retain names such as
+Deepgram STT and TTS; `PERSONAE_ELEVENLABS_API_KEY` is shared by ElevenLabs
+STT and TTS. Provider-independent choices retain names such as
 `PERSONAE_TTS_PROVIDER` and `PERSONAE_CHARACTER_ID`.
 
 ## Session recovery
@@ -268,3 +267,49 @@ Speculative generation remains off to avoid extra model calls and false starts.
 Backend `first_audio_ms` measures time after the confirmed transcript, excluding
 end-of-speech detection and browser playback. Use it alongside Flux turn logs and
 browser measurements when comparing changes. See [Flux parameter documentation](https://developers.deepgram.com/docs/flux/configuration).
+
+
+### Listening provider
+
+`PERSONAE_STT_PROVIDER=deepgram|elevenlabs|mock` selects listening independently
+of `PERSONAE_TTS_PROVIDER`. A missing key for the selected
+provider uses demo STT; another provider's key does not change the selection.
+
+To use ElevenLabs Scribe, set `PERSONAE_STT_PROVIDER=elevenlabs` and
+`PERSONAE_ELEVENLABS_API_KEY`. The same key authenticates ElevenLabs STT and TTS;
+provider selections remain independent. The realtime model is
+`PERSONAE_ELEVENLABS_STT_MODEL=scribe_v2_realtime`. Leave
+`PERSONAE_ELEVENLABS_STT_LANGUAGE` blank for automatic language detection.
+
+`PERSONAE_ELEVENLABS_STT_SILENCE_SECONDS=0.6` controls the pause before a committed
+turn (shorter responds sooner but may split a mid-sentence pause).
+`PERSONAE_ELEVENLABS_STT_FILTER_BACKGROUND_AUDIO=true` requests provider-side
+background speech filtering; it is not a guarantee of speaker isolation.
+Deepgram turn settings apply only to Deepgram. Scribe uses silence-based commits,
+not Flux's semantic or speculative turn detection. Partial transcripts still
+support the existing voice-interruption path.
+
+The backend sends mono PCM16 at 16 kHz over an authenticated WebSocket; the key
+never reaches the browser. Timestamp metadata is ignored to prevent duplicate
+replies. Keyterm prompting is deliberately omitted because ElevenLabs bills it
+as an additional feature. See the [Scribe realtime API documentation](https://elevenlabs.io/docs/api-reference/speech-to-text/v-1-speech-to-text-realtime).
+
+After changing configuration, recreate the backend container and refresh the
+browser. When deploying adapter code changes, build the backend as well:
+`docker compose up -d --build backend`.
+
+
+### Speech adapter modules
+
+Speech adapters use `<provider>[_<family>]_<stt|tts>.py`:
+
+- `deepgram_stt.py`: Nova recognition and utterance assembly.
+- `deepgram_tts.py`: Aura synthesis.
+- `deepgram_flux_stt.py`: Flux recognition and turn detection.
+- `deepgram_flux_tts.py`: Flux synthesis and interruption.
+- `elevenlabs_stt.py`: Scribe realtime recognition.
+- `elevenlabs_tts.py`: ElevenLabs synthesis and alignment.
+- `local_tts.py`: local compatible synthesis.
+
+`factory.py` selects adapters; `base.py` defines their shared interfaces.
+`mock.py` groups the demo implementations. No old import aliases are retained.

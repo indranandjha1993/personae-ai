@@ -7,7 +7,7 @@ import math
 from collections.abc import AsyncIterator, Sequence
 from statistics import median
 
-from personae.live import LiveSession
+from personae.live_session import LiveSession
 from personae.main import REPO_ROOT
 from personae.packs.loader import load_packs
 from personae.protocol import MetricsMessage

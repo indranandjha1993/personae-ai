@@ -8,7 +8,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 
-import { openSession } from './session'
+import { openSession } from './conversation-socket'
 
 class FakeSocket {
   static OPEN = 1
@@ -89,9 +89,9 @@ it('passes the explicitly supplied page access token to the conversation socket'
     return socket
   }, { OPEN: 1, CONNECTING: 0 }))
   try {
-    const session = openSession('bundled/seed', { onMessage: vi.fn() }, 'deepgram:default')
+    const session = openSession('bundled/seed', { onMessage: vi.fn() })
     expect(opened?.searchParams.get('token')).toBe('test-access')
-    expect(opened?.searchParams.get('voice')).toBe('deepgram:default')
+    expect(opened?.searchParams.has('voice')).toBe(false)
     session.close()
   } finally {
     window.history.replaceState({}, '', '/')

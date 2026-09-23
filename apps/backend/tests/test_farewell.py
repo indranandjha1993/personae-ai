@@ -1,6 +1,6 @@
 """Ending a conversation the way people do."""
 
-from personae.speech import farewell_marked, for_speech, strip_farewell
+from personae.speech_text import farewell_marked, for_speech, strip_farewell
 
 
 def test_recognises_the_marker_she_uses_to_say_goodbye() -> None:

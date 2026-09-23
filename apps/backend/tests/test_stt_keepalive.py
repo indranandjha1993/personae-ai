@@ -10,8 +10,8 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from personae.providers import deepgram
-from personae.providers.deepgram import DeepgramStt
+from personae.providers import deepgram_stt
+from personae.providers.deepgram_stt import DeepgramStt
 
 
 class RecordingConnection:
@@ -38,7 +38,7 @@ async def test_silence_is_held_open_with_keep_alives(
 ) -> None:
     """A speaker who pauses is having a conversation, not disconnecting."""
     # Scaled down so the test spends milliseconds, not seconds, in silence.
-    monkeypatch.setattr(deepgram, "KEEPALIVE_INTERVAL_S", 0.02)
+    monkeypatch.setattr(deepgram_stt, "KEEPALIVE_INTERVAL_S", 0.02)
     connection = RecordingConnection()
 
     async def audio() -> AsyncIterator[bytes]:

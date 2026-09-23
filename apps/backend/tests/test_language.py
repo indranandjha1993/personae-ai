@@ -6,7 +6,7 @@ setting here also selects one.
 
 import pytest
 
-from personae.providers.deepgram import DeepgramStt
+from personae.providers.deepgram_stt import DeepgramStt
 from personae.settings import Settings
 
 

@@ -9,7 +9,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { ServerMessage } from './protocol'
-import type { SessionHandlers } from './session'
+import type { SessionHandlers } from './conversation-socket'
 import { useConversation } from './useConversation'
 
 let sendAudio = vi.fn()
@@ -17,7 +17,7 @@ let captureFrame: (frame: Int16Array<ArrayBuffer>) => void = () => {}
 
 let deliver: (message: ServerMessage) => void = () => {}
 
-vi.mock('./session', () => ({
+vi.mock('./conversation-socket', () => ({
   openSession: (_id: string, handlers: SessionHandlers) => {
     deliver = handlers.onMessage
     sendAudio = vi.fn()
@@ -223,7 +223,7 @@ it('stops old queued audio when the next transcript arrives', async () => {
 
 
 it('sends silence while answering in noisy-room mode and resumes after the reply', async () => {
-  const { result } = renderHook(() => useConversation('bundled/seed', 'default', false, false))
+  const { result } = renderHook(() => useConversation('bundled/seed', false, false))
   await act(async () => { result.current.start(); await Promise.resolve() })
   act(() => { deliver({ type: 'ready', sample_rate: 24000, channels: 1 }) })
   const frame = new Int16Array([12000, -12000])

@@ -5,7 +5,7 @@ import base64
 import pytest
 from pydantic import ValidationError
 
-from personae.providers.elevenlabs import parse_chunk
+from personae.providers.elevenlabs_tts import parse_chunk
 from personae.speech_events import VisemeCue
 
 
@@ -43,14 +43,16 @@ def test_invalid_alignment_is_rejected() -> None:
         VisemeCue(start=float("nan"), end=1, value="aa")
 
 
+@pytest.mark.parametrize("model", ["eleven_flash_v2_5", "eleven_v3"])
 async def test_streams_audio_and_alignment_without_exposing_credentials(
     monkeypatch: pytest.MonkeyPatch,
+    model: str,
 ) -> None:
     import json
 
     import httpx
 
-    from personae.providers.elevenlabs import ElevenLabsTts
+    from personae.providers.elevenlabs_tts import ElevenLabsTts
     from personae.speech_events import SpeechChunk
 
     requests: list[httpx.Request] = []
@@ -59,7 +61,10 @@ async def test_streams_audio_and_alignment_without_exposing_credentials(
         requests.append(request)
         assert request.headers["xi-api-key"] == "test-key"
         assert request.url.params["output_format"] == "pcm_24000"
-        assert json.loads(request.content)["text"] == "Hello."
+        body = json.loads(request.content)
+        assert body["text"] == "Hello."
+        assert body["model_id"] == model
+        assert body["voice_settings"]["stability"] == 0.5
         # Odd transport boundaries must not corrupt signed 16-bit samples.
         return httpx.Response(
             200,
@@ -77,7 +82,7 @@ async def test_streams_audio_and_alignment_without_exposing_credentials(
         "AsyncClient",
         lambda **kwargs: original(**kwargs, transport=httpx.MockTransport(handler)),
     )
-    provider = ElevenLabsTts("test-key", "test-model", "default-voice")
+    provider = ElevenLabsTts("test-key", model, "default-voice")
     speaker = await provider.open("elevenlabs:pack-voice")
     try:
         chunks = [chunk async for chunk in speaker.say("Hello.")]
@@ -95,7 +100,7 @@ async def test_reports_elevenlabs_failure(monkeypatch: pytest.MonkeyPatch) -> No
     import httpx
 
     from personae.providers.base import ProviderError
-    from personae.providers.elevenlabs import ElevenLabsTts
+    from personae.providers.elevenlabs_tts import ElevenLabsTts
 
     original = httpx.AsyncClient
     monkeypatch.setattr(

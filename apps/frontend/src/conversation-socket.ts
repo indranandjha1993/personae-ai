@@ -21,7 +21,6 @@ export interface Session {
   close: () => void
 }
 
-/** About a second of audio; beyond this the uplink is not keeping up. */
 /**
  * How much unsent audio may pile up before frames start being discarded.
  *
@@ -36,9 +35,8 @@ const MAX_BUFFERED_BYTES = 512_000
 /** What may wait for the socket to open: JSON text, or a raw audio frame. */
 type Outbound = string | Int16Array<ArrayBuffer>
 
-export function openSession(characterId: string, handlers: SessionHandlers, voiceId = 'default'): Session {
+export function openSession(characterId: string, handlers: SessionHandlers): Session {
   const url = new URL(`/ws/live/${characterId}`, window.location.href)
-  if (voiceId !== 'default') url.searchParams.set('voice', voiceId)
   const token = new URL(window.location.href).searchParams.get('token')
   if (token) url.searchParams.set('token', token)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'

@@ -1,5 +1,6 @@
+import { parseCharacters } from '../experience-config'
 import { expect, it } from 'vitest'
-import { DEFAULT_AVATAR, parseAvatar, parseCharacters } from './config'
+import { DEFAULT_AVATAR, parseAvatar } from './config'
 
 it('accepts older character summaries and validates configured assets', () => {
   expect(parseCharacters({ characters: [{ id: 'pack/person', display_name: 'Person' }] })[0]?.avatar)
@@ -14,16 +15,5 @@ it('rejects duplicate and empty character identifiers', () => {
   expect(() => parseCharacters({ characters: [{ id: '', display_name: 'Person' }] })).toThrow()
   expect(() => parseCharacters({ characters: [
     { id: 'person', display_name: 'Person' }, { id: 'person', display_name: 'Another' },
-  ] })).toThrow()
-})
-
-it('validates voice catalogues without presenting demo audio as a paid voice', async () => {
-  const { parseVoices } = await import('./config')
-  expect(parseVoices({ voices: [{ id: 'default', label: 'ElevenLabs', mode: 'mock' }] }))
-    .toEqual([{ id: 'default', label: 'Demo voice', mode: 'mock' }])
-  expect(() => parseVoices({ voices: [] })).toThrow()
-  expect(() => parseVoices({ voices: [{ id: 'default', label: 'Voice', mode: 'unknown' }] })).toThrow()
-  expect(() => parseVoices({ voices: [
-    { id: 'default', label: 'Voice', mode: 'live' }, { id: 'default', label: 'Other', mode: 'live' },
   ] })).toThrow()
 })

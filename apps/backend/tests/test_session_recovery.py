@@ -3,8 +3,8 @@
 import asyncio
 from collections.abc import AsyncIterator, Sequence
 
-from personae.conversation import Message
-from personae.live import LiveSession
+from personae.conversation_history import Message
+from personae.live_session import LiveSession
 from personae.protocol import ServerMessage
 from personae.providers.base import Speaker
 from personae.providers.mock import MockLlm, MockStt, MockTts

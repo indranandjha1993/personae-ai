@@ -6,7 +6,7 @@ import json
 import httpx
 import pytest
 
-from personae.providers.anthropic_compat import AnthropicCompatibleLlm, _fragment_of
+from personae.providers.anthropic_compatible_llm import AnthropicCompatibleLlm, _fragment_of
 
 
 def _stream(*deltas: str) -> bytes:

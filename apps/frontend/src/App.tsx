@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 
-import { parseExperience, type Experience } from './avatar/config'
+import { parseExperience, type Experience } from './experience-config'
 import { PixelStreamingStage } from './avatar/PixelStreamingStage'
 import { downloadMetrics } from './diagnostics'
 
@@ -113,7 +113,7 @@ function useVoiceLight(
   }, [features, ref])
 }
 
-function Conversation({ character, appearance, voiceId, quality, allowVoiceInterruption, microphoneAutoVolume }: Experience) {
+function Conversation({ character, appearance, quality, allowVoiceInterruption, microphoneAutoVolume }: Experience) {
   const { id: characterId, display_name: name } = character
   const avatar = appearance.avatar
   const {
@@ -121,7 +121,7 @@ function Conversation({ character, appearance, voiceId, quality, allowVoiceInter
     status, transcript, reply, gesture, emotion, detail,
     features, spokenSoFar, turnFinished, turnId, inputLevel,
     cameraStream, cameraOn, toggleCamera, start, stop,
-  } = useConversation(characterId, voiceId, allowVoiceInterruption, microphoneAutoVolume)
+  } = useConversation(characterId, allowVoiceInterruption, microphoneAutoVolume)
   const active = status !== 'idle' && status !== 'error'
   const stage = useRef<HTMLDivElement>(null)
   useVoiceLight(stage, features)
