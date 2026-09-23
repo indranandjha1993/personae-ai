@@ -12,20 +12,27 @@ import type { ServerMessage } from './protocol'
 import type { SessionHandlers } from './session'
 import { useConversation } from './useConversation'
 
+let sendAudio = vi.fn()
+let captureFrame: (frame: Int16Array<ArrayBuffer>) => void = () => {}
+
 let deliver: (message: ServerMessage) => void = () => {}
 
 vi.mock('./session', () => ({
   openSession: (_id: string, handlers: SessionHandlers) => {
     deliver = handlers.onMessage
+    sendAudio = vi.fn()
     return {
-      sendAudio: vi.fn(), sendFrame: vi.fn(), stopSpeaking: vi.fn(),
+      sendAudio, sendFrame: vi.fn(), stopSpeaking: vi.fn(),
       interrupt: vi.fn(), close: vi.fn(),
     }
   },
 }))
 
 vi.mock('./audio/capture', () => ({
-  startCapture: () => Promise.resolve({ stop: vi.fn(), context: { close: vi.fn() } }),
+  startCapture: (onFrame: typeof captureFrame) => {
+    captureFrame = onFrame
+    return Promise.resolve({ stop: vi.fn(), context: { close: vi.fn() } })
+  },
 }))
 
 // jsdom has no Web Audio; the hook only needs a context it can later close.
@@ -212,4 +219,24 @@ it('stops old queued audio when the next transcript arrives', async () => {
   act(() => { deliver({ type: 'transcript', text: 'New turn' }) })
   expect(source.stop).toHaveBeenCalled()
   expect(result.current.status).toBe('thinking')
+})
+
+
+it('sends silence while answering in noisy-room mode and resumes after the reply', async () => {
+  const { result } = renderHook(() => useConversation('bundled/seed', 'default', false, false))
+  await act(async () => { result.current.start(); await Promise.resolve() })
+  act(() => { deliver({ type: 'ready', sample_rate: 24000, channels: 1 }) })
+  const frame = new Int16Array([12000, -12000])
+  act(() => { captureFrame(frame) })
+  expect(sendAudio).toHaveBeenLastCalledWith(frame)
+  act(() => {
+    deliver({ type: 'transcript', text: 'Hello' })
+    captureFrame(frame)
+  })
+  expect(sendAudio).toHaveBeenLastCalledWith(new Int16Array(2))
+  act(() => {
+    deliver({ type: 'reply', text: 'Hello back' })
+    captureFrame(frame)
+  })
+  expect(sendAudio).toHaveBeenLastCalledWith(frame)
 })

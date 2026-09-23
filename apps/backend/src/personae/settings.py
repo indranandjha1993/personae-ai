@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     voice_id: str = "default"
     render_quality: Literal["auto", "high", "low"] = "auto"
 
+    barge_in_enabled: bool = True
+    microphone_auto_gain: bool = True
+
     deepgram_api_key: str | None = None
     tts_provider: Literal["deepgram", "elevenlabs", "local", "mock"] = "deepgram"
     local_tts_base_url: str | None = None

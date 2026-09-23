@@ -109,7 +109,10 @@ class LiveSession:
         llm: LlmProvider,
         tts: TtsProvider,
         history: History | None = None,
+        *,
+        barge_in_enabled: bool = True,
     ) -> None:
+        self._barge_in_enabled = barge_in_enabled
         self._character = character
         self._stt = stt
         self._llm = llm
@@ -554,6 +557,8 @@ class LiveSession:
 
     def _is_barge_in(self, heard: Heard, reply: _Reply) -> bool:
         """Whether something heard mid-reply means the listener is talking."""
+        if not self._barge_in_enabled:
+            return False
         text = heard.text.strip()
         if not text:
             return False

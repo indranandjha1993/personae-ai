@@ -90,3 +90,34 @@ async def test_cancelled_stream_releases_all_owned_tasks() -> None:
     await stream.aclose()
     await session._release()
     assert not (asyncio.all_tasks() - before)
+
+
+async def test_noisy_room_does_not_interrupt_for_recognized_background_speech() -> None:
+    from personae.providers.base import Heard
+    from tests.test_live_session import ScriptedStt
+
+    class BackgroundStt(ScriptedStt):
+        async def transcribe(
+            self, audio: AsyncIterator[bytes], keyterms: Sequence[str] = ()
+        ) -> AsyncIterator[Heard]:
+            yield Heard("Hello", final=True)
+            await asyncio.sleep(0.01)
+            yield Heard("Television dialogue", final=True)
+
+    class SlowReply(MockLlm):
+        async def respond(
+            self,
+            system_prompt: str,
+            transcript: str,
+            history: Sequence[Message] = (),
+            image: bytes | None = None,
+        ) -> AsyncIterator[str]:
+            await asyncio.sleep(0.03)
+            yield "One complete answer."
+
+    session = LiveSession(
+        _character(), BackgroundStt([]), SlowReply(), MockTts(1), barge_in_enabled=False
+    )
+    messages = [message async for message in session.run()]
+    assert not any(message.model_dump()["type"] == "interrupted" for message in messages)
+    assert sum(message.model_dump()["type"] == "reply" for message in messages) == 1

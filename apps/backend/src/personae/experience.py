@@ -5,7 +5,7 @@ from personae.settings import Settings
 from personae.voices import voice_choices
 
 
-def experience_config(settings: Settings, registry: CharacterRegistry) -> dict[str, str]:
+def experience_config(settings: Settings, registry: CharacterRegistry) -> dict[str, object]:
     selected = {
         "character_id": settings.character_id,
         "appearance_id": settings.appearance_id or settings.character_id,
@@ -27,4 +27,8 @@ def experience_config(settings: Settings, registry: CharacterRegistry) -> dict[s
         )
     if settings.voice_id not in voice_choices(settings):
         raise ValueError("PERSONAE_VOICE_ID is not available with the configured TTS providers")
-    return selected
+    return {
+        **selected,
+        "barge_in_enabled": settings.barge_in_enabled,
+        "microphone_auto_gain": settings.microphone_auto_gain,
+    }

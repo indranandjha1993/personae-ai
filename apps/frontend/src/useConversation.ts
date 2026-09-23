@@ -58,7 +58,7 @@ export interface Conversation {
   stop: () => void
 }
 
-export function useConversation(characterId: string, voiceId = 'default'): Conversation {
+export function useConversation(characterId: string, voiceId = 'default', bargeInEnabled = true, microphoneAutoGain = true): Conversation {
   const speechTimeline = useRef(new SpeechTimeline())
   const [status, setStatus] = useState<Status>('idle')
   const [transcript, setTranscript] = useState('')
@@ -90,6 +90,7 @@ export function useConversation(characterId: string, voiceId = 'default'): Conve
   const cameraStarting = useRef(false)
   const farewellTimer = useRef<number | null>(null)
   const receivedReply = useRef(false)
+  const awaitingReply = useRef(false)
   const startingRef = useRef(false)
   const generationRef = useRef(0)
   const spokenRef = useRef(false)
@@ -111,6 +112,7 @@ export function useConversation(characterId: string, voiceId = 'default'): Conve
     generationRef.current += 1
     startingRef.current = false
     spokenRef.current = false
+    awaitingReply.current = false
     captureRef.current?.stop()
     captureRef.current = null
     sessionRef.current?.close()
@@ -213,6 +215,7 @@ export function useConversation(characterId: string, voiceId = 'default'): Conve
             setProgressAt(Date.now())
             break
           case 'transcript':
+            awaitingReply.current = true
             playerRef.current?.stop()
             speechTimeline.current.clear()
             spokenRef.current = false
@@ -247,6 +250,7 @@ export function useConversation(characterId: string, voiceId = 'default'): Conve
             pendingExpression.current = null
             break
           case 'reply':
+            awaitingReply.current = false
             receivedReply.current = true
             queued.current = queued.current.filter((item) => item.playedBy !== null)
             // Closes the turn. The full text supersedes what was accumulated,
@@ -303,6 +307,7 @@ export function useConversation(characterId: string, voiceId = 'default'): Conve
             }
             break
           case 'interrupted':
+            awaitingReply.current = false
             speechTimeline.current.clear()
             queued.current = []
             suppressing.current = false
@@ -334,6 +339,7 @@ export function useConversation(characterId: string, voiceId = 'default'): Conve
             break
           }
           case 'error':
+            awaitingReply.current = false
             speechTimeline.current.clear()
             queued.current = []
             // One failed turn, reported by the server; the conversation goes
@@ -369,7 +375,10 @@ export function useConversation(characterId: string, voiceId = 'default'): Conve
 
     startCapture((frame) => {
       if (stale()) return
-      session.sendAudio(frame)
+      // Keep real-time silence flowing so STT can finish its current utterance,
+      // without feeding TV speech into the next turn while the avatar replies.
+      const paused = !bargeInEnabled && (awaitingReply.current || spokenRef.current)
+      session.sendAudio(paused ? new Int16Array(frame.length) : frame)
       inputLevelRef.current = frameLevel(frame)
       // One still per utterance. Ungated this ran on every audio frame, which
       // is ten JPEG uploads a second and continuous vision-token spend.
@@ -387,7 +396,7 @@ export function useConversation(characterId: string, voiceId = 'default'): Conve
       // to the noise floor between replies and every ordinary utterance would
       // fire an interrupt.
       const player = playerRef.current
-      if (spokenRef.current && player) {
+      if (bargeInEnabled && spokenRef.current && player) {
         const speaking = player.currentLoudness()
         if (bargeInRef.current.observe(frameLevel(frame), speaking)) {
           spokenRef.current = false
@@ -406,7 +415,7 @@ export function useConversation(characterId: string, voiceId = 'default'): Conve
           setStatus('listening')
         }
       }
-    })
+    }, microphoneAutoGain)
       .then((capture) => {
         if (stale()) {
           capture.stop()
@@ -425,7 +434,7 @@ export function useConversation(characterId: string, voiceId = 'default'): Conve
         setStatus('error')
       })
       .finally(() => { if (!stale()) startingRef.current = false })
-  }, [characterId, voiceId, teardown])
+  }, [characterId, voiceId, bargeInEnabled, microphoneAutoGain, teardown])
 
   const toggleCamera = useCallback(() => {
     const token = ++cameraGeneration.current

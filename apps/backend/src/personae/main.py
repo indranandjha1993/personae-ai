@@ -64,7 +64,7 @@ class AppState(TypedDict):
     """State constructed once at startup and shared by every request."""
 
     settings: Settings
-    experience: dict[str, str]
+    experience: dict[str, object]
     characters: CharacterRegistry
     stt: SttProvider
     llm: LlmProvider
@@ -189,7 +189,13 @@ def create_app() -> FastAPI:
 
         await socket.accept()
         await socket.send_json(ServerMessage.ready(PLAYBACK_SAMPLE_RATE).model_dump())
-        session = LiveSession(persona, socket.state.stt, socket.state.llm, tts)
+        session = LiveSession(
+            persona,
+            socket.state.stt,
+            socket.state.llm,
+            tts,
+            barge_in_enabled=settings.barge_in_enabled,
+        )
 
         # Reading and replying run concurrently: the whole point is that the
         # listener can speak while she is still talking.

@@ -234,3 +234,17 @@ Silence while listening is normal and does not time out a conversation.
 If `PERSONAE_ACCESS_TOKEN` is configured, open the page with `?token=<your-token>`;
 the browser forwards that explicit token to its conversation WebSocket. Do not
 publish that URL or embed the server token in frontend build variables.
+
+## Noisy rooms
+
+Set `PERSONAE_BARGE_IN_ENABLED=false` and `PERSONAE_MICROPHONE_AUTO_GAIN=false`
+for turn-taking in rooms with background speech. The browser sends silence while
+an answer is being generated or played, and the server ignores background
+transcripts during generation. Wait until the status returns to Listening before
+speaking. This deliberately disables hands-free interruption; End conversation
+still stops playback immediately. Set both to `true` to restore the previous behavior.
+
+Echo cancellation and noise suppression remain requested from the browser, which
+may apply these constraints differently across devices. Disabling automatic gain
+may make quiet or distant speech harder to hear. This is not speaker identification:
+TV dialogue can still be recognized while Listening. Real-room testing is required.

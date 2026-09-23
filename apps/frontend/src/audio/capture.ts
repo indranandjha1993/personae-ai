@@ -24,6 +24,7 @@ export interface Capture {
  */
 export async function startCapture(
   onFrame: (frame: Int16Array<ArrayBuffer>) => void,
+  autoGainControl = true,
 ): Promise<Capture> {
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: {
@@ -36,7 +37,7 @@ export async function startCapture(
       noiseSuppression: true,
       // Lifts a quiet or distant speaker rather than leaving the recogniser
       // to work from what little reaches the microphone.
-      autoGainControl: true,
+      autoGainControl,
     },
   })
 
