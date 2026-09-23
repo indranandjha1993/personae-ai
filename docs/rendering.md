@@ -237,8 +237,8 @@ publish that URL or embed the server token in frontend build variables.
 
 ## Full-duplex audio in noisy rooms
 
-Keep `PERSONAE_BARGE_IN_ENABLED=true` to listen while the avatar speaks and
-interrupt replies. With a nearby headset microphone, `PERSONAE_MICROPHONE_AUTO_GAIN=false`
+Keep `PERSONAE_ALLOW_VOICE_INTERRUPTION=true` to listen while the avatar speaks and
+interrupt replies. With a nearby headset microphone, `PERSONAE_MICROPHONE_AUTO_VOLUME=false`
 avoids requesting automatic amplification of quieter input. Echo cancellation
 and noise suppression are requested independently and remain on.
 
@@ -253,6 +253,6 @@ be transcribed and cause interruptions, especially when it is as clear as the
 user's speech. A volume threshold or generic speech detector cannot reliably
 distinguish them; this needs testing with the actual room and microphone.
 
-`PERSONAE_BARGE_IN_ENABLED=false` remains an explicit opt-in for turn-taking:
+`PERSONAE_ALLOW_VOICE_INTERRUPTION=false` remains an explicit opt-in for turn-taking:
 microphone audio is replaced with silence during replies. It is not the recommended
 setting when interruption is required.

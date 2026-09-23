@@ -194,7 +194,7 @@ def create_app() -> FastAPI:
             socket.state.stt,
             socket.state.llm,
             tts,
-            barge_in_enabled=settings.barge_in_enabled,
+            allow_voice_interruption=settings.allow_voice_interruption,
         )
 
         # Reading and replying run concurrently: the whole point is that the

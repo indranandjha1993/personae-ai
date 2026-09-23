@@ -13,8 +13,8 @@ import pytest
 @pytest.fixture(autouse=True)
 def _isolate_environment(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     for name in (
-        "PERSONAE_BARGE_IN_ENABLED",
-        "PERSONAE_MICROPHONE_AUTO_GAIN",
+        "PERSONAE_ALLOW_VOICE_INTERRUPTION",
+        "PERSONAE_MICROPHONE_AUTO_VOLUME",
         "PERSONAE_DEEPGRAM_STT_MODEL",
         "PERSONAE_DEEPGRAM_STT_LANGUAGE",
         "PERSONAE_DEEPGRAM_TTS_VOICE",

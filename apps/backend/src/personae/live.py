@@ -110,9 +110,9 @@ class LiveSession:
         tts: TtsProvider,
         history: History | None = None,
         *,
-        barge_in_enabled: bool = True,
+        allow_voice_interruption: bool = True,
     ) -> None:
-        self._barge_in_enabled = barge_in_enabled
+        self._allow_voice_interruption = allow_voice_interruption
         self._character = character
         self._stt = stt
         self._llm = llm
@@ -557,7 +557,7 @@ class LiveSession:
 
     def _is_barge_in(self, heard: Heard, reply: _Reply) -> bool:
         """Whether something heard mid-reply means the listener is talking."""
-        if not self._barge_in_enabled:
+        if not self._allow_voice_interruption:
             return False
         text = heard.text.strip()
         if not text:

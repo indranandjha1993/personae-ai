@@ -113,7 +113,7 @@ function useVoiceLight(
   }, [features, ref])
 }
 
-function Conversation({ character, appearance, voiceId, quality, bargeInEnabled, microphoneAutoGain }: Experience) {
+function Conversation({ character, appearance, voiceId, quality, allowVoiceInterruption, microphoneAutoVolume }: Experience) {
   const { id: characterId, display_name: name } = character
   const avatar = appearance.avatar
   const {
@@ -121,7 +121,7 @@ function Conversation({ character, appearance, voiceId, quality, bargeInEnabled,
     status, transcript, reply, gesture, emotion, detail,
     features, spokenSoFar, turnFinished, turnId, inputLevel,
     cameraStream, cameraOn, toggleCamera, start, stop,
-  } = useConversation(characterId, voiceId, bargeInEnabled, microphoneAutoGain)
+  } = useConversation(characterId, voiceId, allowVoiceInterruption, microphoneAutoVolume)
   const active = status !== 'idle' && status !== 'error'
   const stage = useRef<HTMLDivElement>(null)
   useVoiceLight(stage, features)
@@ -185,7 +185,7 @@ function Conversation({ character, appearance, voiceId, quality, bargeInEnabled,
 
       {!active && (
         <p className="hint">
-          {name}&apos;s here. Answers when you pause; {bargeInEnabled ? 'interrupt anytime.' : 'wait for the reply to finish before speaking.'}
+          {name}&apos;s here. Answers when you pause; {allowVoiceInterruption ? 'interrupt anytime.' : 'wait for the reply to finish before speaking.'}
         </p>
       )}
       {detail !== '' && <p className="alert" role="alert">{detail}</p>}

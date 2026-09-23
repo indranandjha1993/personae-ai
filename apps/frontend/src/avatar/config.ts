@@ -73,8 +73,8 @@ export function parseVoices(body: unknown): VoiceOption[] {
 }
 
 export interface Experience {
-  bargeInEnabled: boolean
-  microphoneAutoGain: boolean
+  allowVoiceInterruption: boolean
+  microphoneAutoVolume: boolean
   character: Character
   appearance: Character
   voiceId: string
@@ -88,12 +88,12 @@ export function parseExperience(body: unknown): Experience {
   const appearance = characters.find((entry) => entry.id === config['appearance_id'])
   const voiceId = config['voice_id']
   const quality = config['quality']
-  const bargeInEnabled = config['barge_in_enabled']
-  const microphoneAutoGain = config['microphone_auto_gain']
-  if (typeof bargeInEnabled !== 'boolean' || typeof microphoneAutoGain !== 'boolean' || !character || !appearance || typeof voiceId !== 'string' || !voiceId ||
+  const allowVoiceInterruption = config['allow_voice_interruption']
+  const microphoneAutoVolume = config['microphone_auto_volume']
+  if (typeof allowVoiceInterruption !== 'boolean' || typeof microphoneAutoVolume !== 'boolean' || !character || !appearance || typeof voiceId !== 'string' || !voiceId ||
       (quality !== 'auto' && quality !== 'high' && quality !== 'low') ||
       (character.avatar.renderer === 'vrm' && appearance.avatar.renderer !== 'vrm')) {
     throw new Error('Invalid experience configuration')
   }
-  return { character, appearance, voiceId, quality, bargeInEnabled, microphoneAutoGain }
+  return { character, appearance, voiceId, quality, allowVoiceInterruption, microphoneAutoVolume }
 }

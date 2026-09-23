@@ -58,7 +58,7 @@ export interface Conversation {
   stop: () => void
 }
 
-export function useConversation(characterId: string, voiceId = 'default', bargeInEnabled = true, microphoneAutoGain = true): Conversation {
+export function useConversation(characterId: string, voiceId = 'default', allowVoiceInterruption = true, microphoneAutoVolume = true): Conversation {
   const speechTimeline = useRef(new SpeechTimeline())
   const [status, setStatus] = useState<Status>('idle')
   const [transcript, setTranscript] = useState('')
@@ -377,7 +377,7 @@ export function useConversation(characterId: string, voiceId = 'default', bargeI
       if (stale()) return
       // Keep real-time silence flowing so STT can finish its current utterance,
       // without feeding TV speech into the next turn while the avatar replies.
-      const paused = !bargeInEnabled && (awaitingReply.current || spokenRef.current)
+      const paused = !allowVoiceInterruption && (awaitingReply.current || spokenRef.current)
       session.sendAudio(paused ? new Int16Array(frame.length) : frame)
       inputLevelRef.current = frameLevel(frame)
       // One still per utterance. Ungated this ran on every audio frame, which
@@ -396,7 +396,7 @@ export function useConversation(characterId: string, voiceId = 'default', bargeI
       // to the noise floor between replies and every ordinary utterance would
       // fire an interrupt.
       const player = playerRef.current
-      if (bargeInEnabled && spokenRef.current && player) {
+      if (allowVoiceInterruption && spokenRef.current && player) {
         const speaking = player.currentLoudness()
         if (bargeInRef.current.observe(frameLevel(frame), speaking)) {
           spokenRef.current = false
@@ -415,7 +415,7 @@ export function useConversation(characterId: string, voiceId = 'default', bargeI
           setStatus('listening')
         }
       }
-    }, microphoneAutoGain)
+    }, microphoneAutoVolume)
       .then((capture) => {
         if (stale()) {
           capture.stop()
@@ -434,7 +434,7 @@ export function useConversation(characterId: string, voiceId = 'default', bargeI
         setStatus('error')
       })
       .finally(() => { if (!stale()) startingRef.current = false })
-  }, [characterId, voiceId, bargeInEnabled, microphoneAutoGain, teardown])
+  }, [characterId, voiceId, allowVoiceInterruption, microphoneAutoVolume, teardown])
 
   const toggleCamera = useCallback(() => {
     const token = ++cameraGeneration.current

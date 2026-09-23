@@ -14,14 +14,14 @@ def test_default_experience() -> None:
         "appearance_id": "bundled/seed",
         "voice_id": "default",
         "quality": "auto",
-        "barge_in_enabled": True,
-        "microphone_auto_gain": True,
+        "allow_voice_interruption": True,
+        "microphone_auto_volume": True,
     }
 
 
 def test_env_selects_independent_experience(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("PERSONAE_BARGE_IN_ENABLED", "false")
-    monkeypatch.setenv("PERSONAE_MICROPHONE_AUTO_GAIN", "false")
+    monkeypatch.setenv("PERSONAE_ALLOW_VOICE_INTERRUPTION", "false")
+    monkeypatch.setenv("PERSONAE_MICROPHONE_AUTO_VOLUME", "false")
     monkeypatch.setenv("PERSONAE_CHARACTER_ID", "bundled/mentor")
     monkeypatch.setenv("PERSONAE_APPEARANCE_ID", "bundled/analyst")
     monkeypatch.setenv("PERSONAE_RENDER_QUALITY", "low")
@@ -34,8 +34,8 @@ def test_env_selects_independent_experience(monkeypatch: pytest.MonkeyPatch) -> 
         "appearance_id": "bundled/analyst",
         "voice_id": "local:af_heart",
         "quality": "low",
-        "barge_in_enabled": False,
-        "microphone_auto_gain": False,
+        "allow_voice_interruption": False,
+        "microphone_auto_volume": False,
     }
 
 

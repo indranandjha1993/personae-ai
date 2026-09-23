@@ -29,6 +29,6 @@ def experience_config(settings: Settings, registry: CharacterRegistry) -> dict[s
         raise ValueError("PERSONAE_VOICE_ID is not available with the configured TTS providers")
     return {
         **selected,
-        "barge_in_enabled": settings.barge_in_enabled,
-        "microphone_auto_gain": settings.microphone_auto_gain,
+        "allow_voice_interruption": settings.allow_voice_interruption,
+        "microphone_auto_volume": settings.microphone_auto_volume,
     }

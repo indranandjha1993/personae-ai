@@ -116,7 +116,7 @@ async def test_noisy_room_does_not_interrupt_for_recognized_background_speech() 
             yield "One complete answer."
 
     session = LiveSession(
-        _character(), BackgroundStt([]), SlowReply(), MockTts(1), barge_in_enabled=False
+        _character(), BackgroundStt([]), SlowReply(), MockTts(1), allow_voice_interruption=False
     )
     messages = [message async for message in session.run()]
     assert not any(message.model_dump()["type"] == "interrupted" for message in messages)

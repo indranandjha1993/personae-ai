@@ -22,7 +22,7 @@ const characters = [
   { id: 'bundled/coach', display_name: 'Coach', avatar: { ...DEFAULT_AVATAR, model_url: '/models/coach.vrm' } },
   { id: 'bundled/seed', display_name: 'Wren', avatar: DEFAULT_AVATAR },
 ]
-const experience = { barge_in_enabled: true, microphone_auto_gain: true, character_id: 'bundled/coach', appearance_id: 'bundled/seed', voice_id: 'local:af_heart', quality: 'low' }
+const experience = { allow_voice_interruption: true, microphone_auto_volume: true, character_id: 'bundled/coach', appearance_id: 'bundled/seed', voice_id: 'local:af_heart', quality: 'low' }
 function setupFetch(config: unknown = experience) {
   vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true,
     json: () => Promise.resolve({ characters, experience: config }),
