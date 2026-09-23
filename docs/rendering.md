@@ -222,3 +222,15 @@ For example, `PERSONAE_DEEPGRAM_STT_MODEL`, `PERSONAE_DEEPGRAM_TTS_VOICE`,
 and `PERSONAE_ELEVENLABS_TTS_MODEL`. `PERSONAE_DEEPGRAM_API_KEY` is shared by
 Deepgram STT and TTS. Provider-independent choices retain names such as
 `PERSONAE_TTS_PROVIDER` and `PERSONAE_CHARACTER_ID`.
+
+## Session recovery
+
+The page shows Connecting until the socket handshake, microphone capture and
+playback context are ready. A connection taking more than 20 seconds offers a
+restart. A reply stalled for 45 seconds, or a playback clock frozen for 10
+seconds while audio is queued, ends the session with an actionable error.
+Silence while listening is normal and does not time out a conversation.
+
+If `PERSONAE_ACCESS_TOKEN` is configured, open the page with `?token=<your-token>`;
+the browser forwards that explicit token to its conversation WebSocket. Do not
+publish that URL or embed the server token in frontend build variables.

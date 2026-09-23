@@ -79,3 +79,21 @@ it('does not send delayed frames after the session closes', () => {
   session.interrupt()
   expect(socket.sent).toHaveLength(0)
 })
+
+it('passes the explicitly supplied page access token to the conversation socket', () => {
+  window.history.replaceState({}, '', '/?token=test-access')
+  let opened: URL | undefined
+  const socket = new FakeSocket()
+  vi.stubGlobal('WebSocket', Object.assign(function (url: URL) {
+    opened = url
+    return socket
+  }, { OPEN: 1, CONNECTING: 0 }))
+  try {
+    const session = openSession('bundled/seed', { onMessage: vi.fn() }, 'deepgram:default')
+    expect(opened?.searchParams.get('token')).toBe('test-access')
+    expect(opened?.searchParams.get('voice')).toBe('deepgram:default')
+    session.close()
+  } finally {
+    window.history.replaceState({}, '', '/')
+  }
+})

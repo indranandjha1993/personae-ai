@@ -109,3 +109,29 @@ async def test_local_tts_surfaces_failures(
             _ = [chunk async for chunk in speaker.say("Hello")]
     finally:
         await speaker.close()
+
+
+def test_pack_voice_family_is_resolved_before_constructing_session_tts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from personae import main
+    from personae.providers.mock import MockStt, MockTts
+
+    requested: list[str] = []
+
+    def build(settings: Settings) -> MockTts:
+        requested.append(settings.deepgram_tts_voice)
+        return MockTts()
+
+    monkeypatch.setenv("PERSONAE_DEEPGRAM_API_KEY", "test")
+    monkeypatch.setenv("PERSONAE_DEEPGRAM_TTS_VOICE", "aura-2-thalia-en")
+    monkeypatch.setattr(main, "build_stt", lambda _: MockStt())
+    monkeypatch.setattr(main, "build_tts", build)
+    with (
+        TestClient(main.create_app()) as client,
+        client.websocket_connect("/ws/live/bundled/seed") as socket,
+    ):
+        assert socket.receive_json()["type"] == "ready"
+    assert requested == ["aura-2-thalia-en", "flux-haley-en"]

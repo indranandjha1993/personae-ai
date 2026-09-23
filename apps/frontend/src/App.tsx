@@ -140,7 +140,7 @@ function Conversation({ character, appearance, voiceId, quality }: Experience) {
         <div className="stage-light stage-light--listen" />
         <div className="stage-light stage-light--speak" />
         <Suspense fallback={<p className="stage-loading" role="status">Loading avatar…</p>}>
-          <AvatarStage avatar={avatar} quality={quality} mouthCues={mouthCues} gesture={gesture} emotion={emotion} activity={status} features={features} />
+          <AvatarStage avatar={avatar} quality={quality} mouthCues={mouthCues} gesture={gesture} emotion={emotion} activity={status === 'connecting' ? 'idle' : status} features={features} />
         </Suspense>
         <div className="stage-grain" />
         {cameraStream && <SelfView stream={cameraStream} />}

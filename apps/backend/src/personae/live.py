@@ -205,8 +205,9 @@ class LiveSession:
                 self._interrupted.clear()
                 yield ServerMessage.transcript(text)
                 reply = self._take_draft(text) or self._start(text)
-                async for message in self._stream(reply, events):
-                    yield message
+                async with contextlib.aclosing(self._stream(reply, events)) as stream:
+                    async for message in stream:
+                        yield message
         finally:
             self._discard_draft()
             listener.cancel()
@@ -256,6 +257,12 @@ class LiveSession:
 
     def _voice(self) -> asyncio.Task[Speaker]:
         """The session's speaker, connecting on first use."""
+        if (
+            self._speaker is not None
+            and self._speaker.done()
+            and (self._speaker.cancelled() or self._speaker.exception() is not None)
+        ):
+            self._speaker = None
         if self._speaker is None:
             voice = self._character.voice
             self._speaker = asyncio.create_task(
@@ -323,7 +330,7 @@ class LiveSession:
             reply.metrics.setdefault(name, (perf_counter() - reply.started) * 1000)
 
         try:
-            speaker = await self._voice()
+            speaker = await asyncio.shield(self._voice())
             # Where a sentence falls in the reply, and whether the one before
             # carried a gesture she chose: the hands should not be busy on
             # every line.
@@ -475,7 +482,7 @@ class LiveSession:
 
     async def _stream(
         self, reply: _Reply, events: asyncio.Queue[Event]
-    ) -> AsyncIterator[ServerMessage]:
+    ) -> AsyncGenerator[ServerMessage]:
         """Relay a reply as it is produced, until it ends or is cut off.
 
         Words arriving while she talks are the listener talking over her and
@@ -486,6 +493,8 @@ class LiveSession:
         assert producer is not None
         waiter = asyncio.create_task(self._interrupted.wait())
         listening = True
+        nxt: asyncio.Task[ServerMessage | None] | None = None
+        ear: asyncio.Task[Event] | None = None
         try:
             while True:
                 if producer.done() and outbound.empty():
@@ -514,6 +523,8 @@ class LiveSession:
                             cut = True
                     else:
                         ear.cancel()
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await ear
                 if cut:
                     nxt.cancel()
                     yield ServerMessage.interrupted()
@@ -528,9 +539,10 @@ class LiveSession:
                     # whatever it left, or to stop if there is nothing.
                     nxt.cancel()
         finally:
-            producer.cancel()
-            waiter.cancel()
-            for task in (producer, waiter):
+            owned = [task for task in (producer, waiter, nxt, ear) if task is not None]
+            for task in owned:
+                task.cancel()
+            for task in owned:
                 # A provider failure was already reported to the client; letting
                 # it re-raise here would also skip the history write below.
                 with contextlib.suppress(asyncio.CancelledError, Exception):

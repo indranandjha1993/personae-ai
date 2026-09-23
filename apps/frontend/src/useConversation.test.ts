@@ -30,23 +30,28 @@ vi.mock('./audio/capture', () => ({
 
 // jsdom has no Web Audio; the hook only needs a context it can later close.
 class FakeAudioContext {
+  static latest: FakeAudioContext
+  constructor() { FakeAudioContext.latest = this }
+  sources: { onended: (() => void) | null; stop: ReturnType<typeof vi.fn> }[] = []
   currentTime = 0
   sampleRate = 24_000
   destination = {}
   close = vi.fn(() => Promise.resolve())
   resume = vi.fn(() => Promise.resolve())
   createBuffer(_channels: number, length: number) {
-    return { getChannelData: () => new Float32Array(length) }
+    return { duration: length / this.sampleRate, getChannelData: () => new Float32Array(length) }
   }
   createBufferSource() {
-    return {
+    const source = {
       buffer: null,
       connect: vi.fn(),
       start: vi.fn(),
       stop: vi.fn(),
       disconnect: vi.fn(),
-      onended: null,
+      onended: null as (() => void) | null,
     }
+    this.sources.push(source)
+    return source
   }
   createAnalyser() {
     return {
@@ -72,6 +77,7 @@ async function started() {
   await act(async () => {
     hook.result.current.start()
     await Promise.resolve()
+    deliver({ type: 'ready', sample_rate: 24000, channels: 1 })
   })
   return hook
 }
@@ -148,4 +154,62 @@ describe('session isolation', () => {
     act(() => { oldDeliver({ type: 'transcript', text: 'Stale session' }) })
     expect(result.current.transcript).toBe('New session')
   })
+})
+
+
+it('waits for server readiness before claiming to listen', async () => {
+  const { result } = renderHook(() => useConversation('bundled/seed'))
+  await act(async () => { result.current.start(); await Promise.resolve() })
+  expect(result.current.status).toBe('connecting')
+  act(() => { deliver({ type: 'ready', sample_rate: 24000, channels: 1 }) })
+  expect(result.current.status).toBe('listening')
+})
+
+it('times out a connection that never becomes ready', async () => {
+  vi.useFakeTimers()
+  const { result } = renderHook(() => useConversation('bundled/seed'))
+  await act(async () => { result.current.start(); await Promise.resolve() })
+  act(() => { vi.advanceTimersByTime(21_000) })
+  expect(result.current.status).toBe('error')
+  expect(result.current.detail).toContain('Connection timed out')
+})
+
+it('does not remain speaking forever when the audio clock stalls', async () => {
+  vi.useFakeTimers()
+  const { result } = await started()
+  act(() => {
+    deliver({ type: 'transcript', text: 'Hello' })
+    deliver({ type: 'audio', samples: new Int16Array(2400) })
+  })
+  act(() => { vi.advanceTimersByTime(11_000) })
+  expect(result.current.status).toBe('error')
+  expect(result.current.detail).toContain('Audio playback stopped')
+})
+
+
+it('waits for unfinished generation after queued audio drains, then times out', async () => {
+  vi.useFakeTimers()
+  const { result } = await started()
+  act(() => {
+    deliver({ type: 'transcript', text: 'Hello' })
+    deliver({ type: 'audio', samples: new Int16Array(2400) })
+  })
+  act(() => {
+    FakeAudioContext.latest.currentTime = 1
+    FakeAudioContext.latest.sources.forEach((source) => source.onended?.())
+    vi.advanceTimersByTime(200)
+  })
+  expect(result.current.status).toBe('thinking')
+  act(() => { vi.advanceTimersByTime(46_000) })
+  expect(result.current.status).toBe('error')
+})
+
+it('stops old queued audio when the next transcript arrives', async () => {
+  const { result } = await started()
+  act(() => { deliver({ type: 'audio', samples: new Int16Array(2400) }) })
+  const source = FakeAudioContext.latest.sources[0]
+  if (!source) throw new Error('Expected queued audio')
+  act(() => { deliver({ type: 'transcript', text: 'New turn' }) })
+  expect(source.stop).toHaveBeenCalled()
+  expect(result.current.status).toBe('thinking')
 })

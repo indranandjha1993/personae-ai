@@ -39,6 +39,8 @@ type Outbound = string | Int16Array<ArrayBuffer>
 export function openSession(characterId: string, handlers: SessionHandlers, voiceId = 'default'): Session {
   const url = new URL(`/ws/live/${characterId}`, window.location.href)
   if (voiceId !== 'default') url.searchParams.set('voice', voiceId)
+  const token = new URL(window.location.href).searchParams.get('token')
+  if (token) url.searchParams.set('token', token)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   const socket = new WebSocket(url)
   let closed = false

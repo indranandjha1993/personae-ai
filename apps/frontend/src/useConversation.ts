@@ -18,7 +18,7 @@ import { startCamera, type Camera } from './camera'
 import { DEFAULT_SAMPLE_RATE } from './protocol'
 import { openSession, type Session } from './session'
 
-export type Status = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error'
+export type Status = 'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking' | 'error'
 
 /** Give up waiting for a goodbye to finish after this. */
 const FAREWELL_MAX_WAIT_MS = 15_000
@@ -141,7 +141,11 @@ export function useConversation(characterId: string, voiceId = 'default'): Conve
     setTranscript('')
     setReply('')
     setDetail('')
-    setStatus('listening')
+    setSpokenSoFar('')
+    setTurnFinished(false)
+    setPlaybackDone(false)
+    setProgressAt(Date.now())
+    setStatus('connecting')
 
     // AudioContext must be created from the user gesture that called start().
     //
@@ -163,7 +167,16 @@ export function useConversation(characterId: string, voiceId = 'default'): Conve
       return
     }
     contextRef.current = context
-    void context.resume().catch(() => {
+    let ready = false
+    let captureReady = false
+    let audioReady = false
+    const markConnected = () => {
+      if (!stale() && ready && captureReady && audioReady) setStatus('listening')
+    }
+    void context.resume().then(() => {
+      audioReady = true
+      markConnected()
+    }).catch(() => {
       if (stale()) return
       setDetail('Audio could not start. Try starting the conversation again.')
       teardown()
@@ -200,6 +213,9 @@ export function useConversation(characterId: string, voiceId = 'default'): Conve
             setProgressAt(Date.now())
             break
           case 'transcript':
+            playerRef.current?.stop()
+            speechTimeline.current.clear()
+            spokenRef.current = false
             receivedReply.current = false
             transcriptAt = performance.now()
             firstAudio = false
@@ -254,6 +270,9 @@ export function useConversation(characterId: string, voiceId = 'default'): Conve
             pendingExpression.current = { gesture: message.gesture, emotion: message.emotion }
             break
           case 'ready':
+            if (ready) break
+            ready = true
+            markConnected()
             sampleRate = message.sample_rate
             player = new PcmPlayer(context, message.sample_rate)
             playerRef.current = player
@@ -261,6 +280,8 @@ export function useConversation(characterId: string, voiceId = 'default'): Conve
           case 'audio':
             if (suppressing.current || message.samples.length === 0) break
             spokenRef.current = true
+            setPlaybackDone(false)
+            setProgressAt(Date.now())
             setStatus('speaking')
             if (!player) {
               player = new PcmPlayer(context, DEFAULT_SAMPLE_RATE)
@@ -392,10 +413,14 @@ export function useConversation(characterId: string, voiceId = 'default'): Conve
           return
         }
         captureRef.current = capture
+        captureReady = true
+        markConnected()
       })
       .catch((error: unknown) => {
         if (stale()) return
-        setDetail(error instanceof Error ? error.message : 'microphone unavailable')
+        setDetail(error instanceof Error && error.name === 'NotAllowedError'
+          ? 'Microphone permission was denied. Allow microphone access in your browser, then start again.'
+          : error instanceof Error ? error.message : 'Microphone unavailable.')
         teardown()
         setStatus('error')
       })
@@ -445,12 +470,12 @@ export function useConversation(characterId: string, voiceId = 'default'): Conve
   // than leaving the user watching a label forever. Any message re-arms it,
   // so a slow reply that is arriving is given its time.
   useEffect(() => {
-    if (status !== 'thinking') return
+    if (status !== 'thinking' && status !== 'connecting') return
     const giveUp = window.setTimeout(() => {
-      setDetail('She did not answer in time.')
+      setDetail(status === 'connecting' ? 'Connection timed out. Check microphone permission and try again.' : 'The reply stalled. Start the conversation again.')
       teardown()
       setStatus('error')
-    }, THINKING_TIMEOUT_MS)
+    }, status === 'connecting' ? 20_000 : THINKING_TIMEOUT_MS)
     return () => { window.clearTimeout(giveUp) }
   }, [status, progressAt, teardown])
 
@@ -459,9 +484,20 @@ export function useConversation(characterId: string, voiceId = 'default'): Conve
   // to the socket shows the words seconds before she says them.
   useEffect(() => {
     if (status !== 'speaking') return
+    let lastClock = playerRef.current?.now ?? 0
+    let lastAdvance = Date.now()
     const tick = window.setInterval(() => {
       const player = playerRef.current
       if (!player) return
+      if (player.now > lastClock) {
+        lastClock = player.now
+        lastAdvance = Date.now()
+      } else if (!player.isFinished() && Date.now() - lastAdvance > 10_000) {
+        setDetail('Audio playback stopped. Start the conversation again to resume audio.')
+        teardown()
+        setStatus('error')
+        return
+      }
 
       const heard = queued.current.filter(
         (pending) => pending.playedBy !== null && pending.playedBy <= player.now,
@@ -476,6 +512,11 @@ export function useConversation(characterId: string, voiceId = 'default'): Conve
         if (cued?.gesture !== undefined) setGesture(cued.gesture)
         if (cued?.emotion !== undefined) setEmotion(cued.emotion)
       }
+      if (player.isFinished() && !receivedReply.current) {
+        spokenRef.current = false
+        setGesture('idle')
+        setStatus('thinking')
+      }
       if (player.isFinished() && queued.current.length === 0) {
         setPlaybackDone(true)
         // The turn is over; hands come back down rather than holding the last
@@ -488,7 +529,7 @@ export function useConversation(characterId: string, voiceId = 'default'): Conve
       }
     }, 100)
     return () => { window.clearInterval(tick) }
-  }, [status])
+  }, [status, teardown])
 
 
   // Reused between frames so the render loop allocates nothing.

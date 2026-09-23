@@ -136,15 +136,17 @@ def create_app() -> FastAPI:
                 }
                 for character_id in registry.ids()
                 for character in (registry.get(character_id),)
-            ]
+            ],
         }
 
     @app.get("/voices")
     async def voices(request: Request) -> dict[str, object]:
-        return {"voices": [
-            {"id": key, "label": choice.label, "mode": choice.mode}
-            for key, choice in voice_choices(request.state.settings).items()
-        ]}
+        return {
+            "voices": [
+                {"id": key, "label": choice.label, "mode": choice.mode}
+                for key, choice in voice_choices(request.state.settings).items()
+            ]
+        }
 
     @app.websocket("/ws/live/{pack}/{character}")
     async def live(socket: WebSocket, pack: str, character: str) -> None:
@@ -171,9 +173,19 @@ def create_app() -> FastAPI:
         choice = choices[selected]
         tts = socket.state.tts if selected == "default" else build_tts(choice.settings)
         if choice.voice is not None:
-            persona = persona.model_copy(update={
-                "voice": persona.voice.model_copy(update={"provider_voice": choice.voice})
-            })
+            persona = persona.model_copy(
+                update={"voice": persona.voice.model_copy(update={"provider_voice": choice.voice})}
+            )
+
+        # Resolve the pack override before choosing the Deepgram wire protocol.
+        if choice.settings.tts_provider == "deepgram":
+            effective_voice = persona.voice.provider_voice or choice.settings.deepgram_tts_voice
+            if effective_voice.startswith("flux-") != choice.settings.deepgram_tts_voice.startswith(
+                "flux-"
+            ):
+                tts = build_tts(
+                    choice.settings.model_copy(update={"deepgram_tts_voice": effective_voice})
+                )
 
         await socket.accept()
         await socket.send_json(ServerMessage.ready(PLAYBACK_SAMPLE_RATE).model_dump())
@@ -240,6 +252,8 @@ def create_app() -> FastAPI:
             reader.cancel()
             with contextlib.suppress(asyncio.CancelledError, WebSocketDisconnect):
                 await reader
+            with contextlib.suppress(WebSocketDisconnect, RuntimeError):
+                await socket.close()
             logger.info("session closed: %s/%s", pack, character)
 
     return app
