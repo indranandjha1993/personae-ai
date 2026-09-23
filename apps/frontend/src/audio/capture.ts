@@ -10,6 +10,8 @@
 import { recordMicrophone } from '../diagnostics'
 
 const CAPTURE_SAMPLE_RATE = 16_000
+// Remove low-frequency rumble while retaining the speech band.
+const RUMBLE_CUTOFF_HZ = 80
 const WORKLET_URL = '/pcm-capture.worklet.js'
 
 export interface Capture {
@@ -45,6 +47,7 @@ export async function startCapture(
 
   let context: AudioContext | undefined
   let source: MediaStreamAudioSourceNode | undefined
+  let highpass: BiquadFilterNode | undefined
   let worklet: AudioWorkletNode | undefined
   let stopped = false
   const stop = () => {
@@ -52,6 +55,7 @@ export async function startCapture(
     stopped = true
     if (worklet) worklet.port.onmessage = null
     source?.disconnect()
+    highpass?.disconnect()
     worklet?.disconnect()
     stream.getTracks().forEach((track) => { track.stop() })
     if (context) void context.close().catch(() => {})
@@ -65,11 +69,18 @@ export async function startCapture(
     await context.resume()
     await context.audioWorklet.addModule(WORKLET_URL)
     source = context.createMediaStreamSource(stream)
+    highpass = context.createBiquadFilter()
+    highpass.type = 'highpass'
+    highpass.frequency.value = RUMBLE_CUTOFF_HZ
+    // Web Audio expresses highpass Q in dB: -3.01 dB gives a flat
+    // Butterworth response, without amplifying noise near the cutoff.
+    highpass.Q.value = -3.0103
     worklet = new AudioWorkletNode(context, 'pcm-capture')
     worklet.port.onmessage = (event: MessageEvent<Int16Array<ArrayBuffer>>) => {
       if (!stopped) onFrame(event.data)
     }
-    source.connect(worklet)
+    source.connect(highpass)
+    highpass.connect(worklet)
     const track = stream.getAudioTracks()[0]
     const settings = track?.getSettings()
     recordMicrophone({

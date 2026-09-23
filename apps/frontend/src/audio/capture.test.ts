@@ -8,9 +8,11 @@ const track = { stop: vi.fn(), label: 'Test headset', getSettings: () => ({
 }) }
 const stream = { getTracks: () => [track], getAudioTracks: () => [track] }
 const source = { connect: vi.fn(), disconnect: vi.fn() }
+const highpass = { type: '', frequency: { value: 0 }, Q: { value: 0 },
+  connect: vi.fn(), disconnect: vi.fn() }
 const context = { sampleRate: 16000, resume: vi.fn(async () => {}),
   close: vi.fn(async () => {}), audioWorklet: { addModule: vi.fn(async () => {}) },
-  createMediaStreamSource: () => source }
+  createMediaStreamSource: () => source, createBiquadFilter: () => highpass }
 const getUserMedia = vi.fn(() => Promise.resolve(stream))
 beforeEach(() => {
   vi.clearAllMocks()
@@ -45,4 +47,35 @@ it('refuses to mislabel audio when the browser ignores the requested sample rate
   context.sampleRate = 48000
   await expect(startCapture(vi.fn())).rejects.toThrow('16 kHz')
   expect(track.stop).toHaveBeenCalledOnce()
+})
+
+it('filters rumble before delivering continuous audio and releases the filter', async () => {
+  let port: { onmessage: ((event: { data: Int16Array }) => void) | null } | undefined
+  const worklet = { port: { onmessage: null }, disconnect: vi.fn() }
+  vi.stubGlobal('AudioWorkletNode', function () {
+    port = worklet.port
+    return worklet
+  })
+  const onFrame = vi.fn()
+  const capture = await startCapture(onFrame, false)
+  expect(source.connect).toHaveBeenCalledWith(highpass)
+  expect(highpass.connect).toHaveBeenCalledWith(worklet)
+  expect(highpass.type).toBe('highpass')
+  expect(highpass.frequency.value).toBe(80)
+  expect(highpass.Q.value).toBeCloseTo(-3.0103)
+  const quietFrame = new Int16Array([0, 1, -1])
+  port?.onmessage?.({ data: quietFrame })
+  expect(onFrame).toHaveBeenCalledWith(quietFrame)
+  capture.stop()
+  capture.stop()
+  expect(highpass.disconnect).toHaveBeenCalledOnce()
+  expect(port?.onmessage).toBeNull()
+})
+
+it('releases the filter and microphone if worklet construction fails', async () => {
+  vi.stubGlobal('AudioWorkletNode', function () { throw new Error('construction failed') })
+  await expect(startCapture(vi.fn())).rejects.toThrow('construction failed')
+  expect(highpass.disconnect).toHaveBeenCalledOnce()
+  expect(track.stop).toHaveBeenCalledOnce()
+  expect(context.close).toHaveBeenCalledOnce()
 })

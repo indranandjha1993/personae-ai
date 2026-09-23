@@ -15,6 +15,7 @@ from personae.providers.base import (
     LlmProvider,
     ProviderError,
     Speaker,
+    WholeReplySpeaker,
 )
 from personae.sentence_buffer import SentenceBuffer
 from personae.speech_events import SpeechChunk
@@ -38,9 +39,26 @@ def _prompt_for(persona: str, seeing: bool) -> str:
     She has no other way to know whether a camera is attached: untold, she
     denies having one even while a frame is in front of her, or guesses.
     """
-    if seeing:
-        return f"{persona}\n\nThe camera is on: you can see the person you are talking to."
-    return f"{persona}\n\nThe camera is off: you cannot see them right now."
+    language = (
+        "Language: English is the primary and default language. Use English when "
+        "starting a conversation or when no other language preference is clear. "
+        "Reply in the language the person requests, regardless of the language "
+        "used to make that request, and keep that preference until they change it. "
+        "Without an explicit preference, follow the language they are conversing "
+        "in; a quoted phrase or isolated foreign word is not a request to switch. "
+        "Support natural multilingual conversation and mixed-language speech. "
+        "Use the chosen language's normal writing system unless the person asks "
+        "for transliteration. Answer directly in that language rather than merely "
+        "promising to switch. Do not invent an English-only restriction or infer "
+        "speech-service limitations from this English prompt or an earlier "
+        "assistant refusal."
+    )
+    camera = (
+        "The camera is on: you can see the person you are talking to."
+        if seeing
+        else "The camera is off: you cannot see them right now."
+    )
+    return f"{persona}\n\n{language}\n\n{camera}"
 
 
 class Reply:
@@ -142,6 +160,10 @@ async def produce_reply(
 
             async def read_text() -> None:
                 sentences = SentenceBuffer()
+                complete_reply = (
+                    isinstance(speaker, WholeReplySpeaker) and speaker.requires_complete_reply
+                )
+                whole_text: list[str] = []
                 fragments = llm.respond(
                     _prompt_for(character.persona.prompt, frame is not None),
                     reply.transcript,
@@ -153,9 +175,12 @@ async def produce_reply(
                         if fragment:
                             mark("first_token_ms")
                         reply.spoken += fragment
-                        for sentence in sentences.feed(fragment):
-                            await pending.put(sentence)
-                    await pending.put(sentences.flush())
+                        if complete_reply:
+                            whole_text.append(fragment)
+                        else:
+                            for sentence in sentences.feed(fragment):
+                                await pending.put(sentence)
+                    await pending.put("".join(whole_text) if complete_reply else sentences.flush())
                     await pending.put(None)
                 finally:
                     if isinstance(fragments, AsyncGenerator):

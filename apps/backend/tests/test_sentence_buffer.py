@@ -26,16 +26,15 @@ def test_flush_gives_up_the_remainder() -> None:
     assert buffer.flush() == "Two"
 
 
-def test_the_first_release_comes_early_so_she_starts_sooner() -> None:
-    """A long opening clause would otherwise leave her silent for its whole
-    duration, which is the delay this exists to remove."""
+def test_opening_comma_does_not_create_a_separate_recording() -> None:
     buffer = SentenceBuffer()
-    released = _feed(buffer, "Right, so the thing about that particular problem is ")
-    assert released == ["Right,"]
+    assert _feed(buffer, "Right, so the thing about that particular problem is ") == []
+    assert _feed(buffer, "timing.") == [
+        "Right, so the thing about that particular problem is timing."
+    ]
 
 
 def test_later_clauses_are_not_split_on_commas() -> None:
-    # Only the opening is split aggressively; after that, whole sentences.
     buffer = SentenceBuffer()
     _feed(buffer, "First. ")
     assert _feed(buffer, "Then, after a while, something else happened.") == [

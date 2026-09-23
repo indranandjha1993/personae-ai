@@ -425,6 +425,7 @@ class CountingTts:
 
     def __init__(self) -> None:
         self.opened = 0
+        self.requires_complete_reply = False
         self.said: list[tuple[str, float | None]] = []
 
     async def open(self, voice: str, rate: float = 1.0, expressivity: int | None = None) -> Speaker:
@@ -432,6 +433,8 @@ class CountingTts:
         recorder = self
 
         class Held:
+            requires_complete_reply = recorder.requires_complete_reply
+
             def say(self, text: str, rate: float | None = None) -> AsyncIterator[bytes]:
                 recorder.said.append((text, rate))
 
@@ -546,8 +549,6 @@ async def test_her_pace_quickens_when_she_is_amused() -> None:
 
 async def test_the_hands_rest_between_guessed_gestures() -> None:
     """Gesturing on every line reads as a puppet; the guessed ones alternate."""
-    # No comma in the opening line: the splitter would release the clause
-    # before it on its own, and the count of sentences is the point here.
     llm = SlowLlm(
         [
             "Loud and clear the engine is warm today. ",
@@ -727,3 +728,27 @@ def test_echo_detection_preserves_non_latin_words() -> None:
     assert not is_echo("रुको", "नमस्ते दुनिया")
     assert is_echo("你好", "你好")
     assert not is_echo("等等", "你好")
+
+
+async def test_complete_reply_speaker_receives_one_continuous_utterance() -> None:
+    tts = CountingTts()
+    tts.requires_complete_reply = True
+    llm = SlowLlm(["Well, hello. ", "How are you?"], 0.0)
+    session = LiveSession(_character(), ScriptedStt(["hi"]), llm, tts)
+    await _offer_turns(session, 1)
+    await _drain(session)
+    assert tts.said == [("Well, hello. How are you?", None)]
+
+
+async def test_hindi_reply_reaches_speech_with_language_guidance() -> None:
+    tts = CountingTts()
+    tts.requires_complete_reply = True
+    llm = SlowLlm(["हाँ, बिल्कुल। ", "हम हिंदी में बात कर सकते हैं।"], 0.0)
+    session = LiveSession(
+        _character(), ScriptedStt(["Please speak in Hindi"]), llm, tts
+    )
+    await _offer_turns(session, 1)
+    await _drain(session)
+    assert "English is the primary and default language" in llm.seen_prompts[0]
+    assert "Reply in the language the person requests" in llm.seen_prompts[0]
+    assert tts.said == [("हाँ, बिल्कुल। हम हिंदी में बात कर सकते हैं।", None)]

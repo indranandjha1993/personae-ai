@@ -93,6 +93,14 @@ class Speaker(Protocol):
 
 
 @runtime_checkable
+class WholeReplySpeaker(Protocol):
+    """Optional capability for models that need full context for natural prosody."""
+
+    @property
+    def requires_complete_reply(self) -> bool: ...
+
+
+@runtime_checkable
 class TtsProvider(Protocol):
     """Streaming text-to-speech."""
 

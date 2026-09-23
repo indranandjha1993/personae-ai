@@ -71,6 +71,14 @@ describe('PcmPlayer', () => {
     expect(second - first).toBeCloseTo(0.1, 5)
   })
 
+  it('keeps chunks contiguous when the remaining lead drops below 80ms', () => {
+    const player = new PcmPlayer(context as unknown as AudioContext, 24_000)
+    player.enqueue(new Int16Array(2400)) // scheduled from .08 to .18
+    context.currentTime = 0.15 // next chunk arrives with 30ms still queued
+    player.enqueue(new Int16Array(2400))
+    expect(context.starts[1]).toBeCloseTo(0.18, 5)
+  })
+
   it('resets the schedule after a gap so playback does not lag behind', () => {
     const player = new PcmPlayer(context as unknown as AudioContext, 24_000)
     player.enqueue(new Int16Array(2400))

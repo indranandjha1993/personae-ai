@@ -84,6 +84,10 @@ async def test_streams_audio_and_alignment_without_exposing_credentials(
     )
     provider = ElevenLabsTts("test-key", model, "default-voice")
     speaker = await provider.open("elevenlabs:pack-voice")
+    from personae.providers.base import WholeReplySpeaker
+
+    assert isinstance(speaker, WholeReplySpeaker)
+    assert speaker.requires_complete_reply == (model == "eleven_v3")
     try:
         chunks = [chunk async for chunk in speaker.say("Hello.")]
     finally:

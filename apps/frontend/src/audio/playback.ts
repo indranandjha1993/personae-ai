@@ -162,8 +162,11 @@ export class PcmPlayer {
 
     // If the stream stalled long enough for the schedule to fall behind the
     // clock, restart from now rather than trying to catch up on stale audio.
-    const earliest = this.context.currentTime + LEAD_SECONDS
-    const startAt = Math.max(this.nextStartTime, earliest)
+    // Apply jitter lead only at startup or after an actual underrun. Reapplying
+    // it while audio is still queued inserts silence between valid PCM chunks.
+    const startAt = this.nextStartTime > this.context.currentTime
+      ? this.nextStartTime
+      : this.context.currentTime + LEAD_SECONDS
 
     source.start(startAt)
     this.nextStartTime = startAt + buffer.duration

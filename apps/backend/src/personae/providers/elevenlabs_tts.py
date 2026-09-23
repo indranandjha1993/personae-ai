@@ -67,6 +67,11 @@ class ElevenLabsSpeaker:
         self._voice = voice
         self._rate = rate
 
+    @property
+    def requires_complete_reply(self) -> bool:
+        # v3 cannot stitch independent requests into a continuous performance.
+        return self._model == "eleven_v3"
+
     async def say(self, text: str, rate: float | None = None) -> AsyncIterator[SpeechChunk]:
         settings = _VoiceSettings(speed=max(0.7, min(1.2, rate or self._rate)))
         remainder = b""
