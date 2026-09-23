@@ -124,8 +124,8 @@ def test_the_speaking_rate_is_snapped_to_what_flux_accepts(
 def test_the_model_name_chooses_the_client(monkeypatch: pytest.MonkeyPatch) -> None:
     """Flux is a different endpoint, so switching is a matter of naming it."""
     monkeypatch.setenv("PERSONAE_DEEPGRAM_API_KEY", "x")
-    monkeypatch.setenv("PERSONAE_STT_MODEL", "flux-general-en")
-    monkeypatch.setenv("PERSONAE_TTS_VOICE", "flux-haley-en")
+    monkeypatch.setenv("PERSONAE_DEEPGRAM_STT_MODEL", "flux-general-en")
+    monkeypatch.setenv("PERSONAE_DEEPGRAM_TTS_VOICE", "flux-haley-en")
 
     assert isinstance(build_stt(Settings()), FluxStt)
     assert isinstance(build_tts(Settings()), FluxTts)
@@ -138,8 +138,8 @@ def test_the_nova_and_aura_clients_are_still_reachable(
     from personae.providers.deepgram import DeepgramStt, DeepgramTts
 
     monkeypatch.setenv("PERSONAE_DEEPGRAM_API_KEY", "x")
-    monkeypatch.setenv("PERSONAE_STT_MODEL", "nova-3")
-    monkeypatch.setenv("PERSONAE_TTS_VOICE", "aura-2-thalia-en")
+    monkeypatch.setenv("PERSONAE_DEEPGRAM_STT_MODEL", "nova-3")
+    monkeypatch.setenv("PERSONAE_DEEPGRAM_TTS_VOICE", "aura-2-thalia-en")
 
     assert isinstance(build_stt(Settings()), DeepgramStt)
     assert isinstance(build_tts(Settings()), DeepgramTts)
@@ -228,7 +228,7 @@ async def test_eager_detection_is_left_off_unless_asked_for(
         yield b"\x00\x01"
 
     [item async for item in stt.transcribe(audio())]
-    assert connection.options.get("eager_eot_threshold") is None
+    assert connection.options.get("deepgram_stt_eager_eot_threshold") is None
 
 
 class Event:

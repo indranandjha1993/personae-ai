@@ -9,7 +9,7 @@ accept images. Existing credentials are never rewritten by this change.
 ## Speech providers and facial timing
 
 `PERSONAE_TTS_PROVIDER=elevenlabs` selects the optional ElevenLabs adapter. Set
-`PERSONAE_ELEVENLABS_API_KEY` and `PERSONAE_ELEVENLABS_VOICE`; the model defaults to
+`PERSONAE_ELEVENLABS_TTS_API_KEY` and `PERSONAE_ELEVENLABS_TTS_VOICE`; the model defaults to
 `eleven_flash_v2_5` and is configurable. A pack may override the voice using
 `provider_voice="elevenlabs:VOICE_ID"`. Deepgram pack voice names do not get sent
 to ElevenLabs. Without the selected provider's key the voice remains a mock.
@@ -183,8 +183,8 @@ bundled characters currently share one VRM model. Hosted characters manage their
 own appearance and voice; leave appearance blank for those deployments.
 
 `VOICE_ID=default` uses the selected `TTS_PROVIDER` and character pack voice.
-`deepgram:default` explicitly uses `PERSONAE_TTS_VOICE`, `elevenlabs:default` uses
-`PERSONAE_ELEVENLABS_VOICE`, and `local:af_heart` selects a configured local voice.
+`deepgram:default` explicitly uses `PERSONAE_DEEPGRAM_TTS_VOICE`, `elevenlabs:default` uses
+`PERSONAE_ELEVENLABS_TTS_VOICE`, and `local:af_heart` selects a configured local voice.
 Only IDs available for configured providers are accepted; invalid IDs fail startup.
 Credentials and personality prompts stay on the backend.
 
@@ -214,3 +214,11 @@ This adapter is tested against simulated HTTP responses, not a live Kokoro insta
 Local inference uses your hardware and electricity. It does not make hosted GPUs
 free, install a model server, replace STT, or turn a stylized VRM into a film-quality
 asset. Existing STT/LLM provider configuration still applies.
+
+## Environment naming
+
+Provider settings use `PERSONAE_<PROVIDER>_<STT|TTS>_<SETTING>`.
+For example, `PERSONAE_DEEPGRAM_STT_MODEL`, `PERSONAE_DEEPGRAM_TTS_VOICE`,
+and `PERSONAE_ELEVENLABS_TTS_MODEL`. `PERSONAE_DEEPGRAM_API_KEY` is shared by
+Deepgram STT and TTS. Provider-independent choices retain names such as
+`PERSONAE_TTS_PROVIDER` and `PERSONAE_CHARACTER_ID`.

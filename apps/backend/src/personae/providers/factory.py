@@ -20,25 +20,25 @@ def build_stt(settings: Settings) -> SttProvider:
 
     # Flux is a different endpoint with its own turn detection, so the model
     # name picks the client rather than being passed to a common one.
-    if settings.stt_model.startswith("flux-"):
+    if settings.deepgram_stt_model.startswith("flux-"):
         from personae.providers.flux import FluxStt
 
         return FluxStt(
             api_key=_require(settings.deepgram_api_key, "DEEPGRAM_API_KEY"),
-            model=settings.stt_model,
-            eot_threshold=settings.eot_threshold,
-            eot_timeout_ms=settings.eot_timeout_ms,
-            eager_eot_threshold=settings.eager_eot_threshold,
+            model=settings.deepgram_stt_model,
+            eot_threshold=settings.deepgram_stt_eot_threshold,
+            eot_timeout_ms=settings.deepgram_stt_eot_timeout_ms,
+            eager_eot_threshold=settings.deepgram_stt_eager_eot_threshold,
         )
 
     from personae.providers.deepgram import DeepgramStt
 
     return DeepgramStt(
         api_key=_require(settings.deepgram_api_key, "DEEPGRAM_API_KEY"),
-        model=settings.stt_model,
-        language=settings.stt_language,
-        endpointing_ms=settings.endpointing_ms,
-        utterance_end_ms=settings.utterance_end_ms,
+        model=settings.deepgram_stt_model,
+        language=settings.deepgram_stt_language,
+        endpointing_ms=settings.deepgram_stt_endpointing_ms,
+        utterance_end_ms=settings.deepgram_stt_utterance_end_ms,
     )
 
 
@@ -57,35 +57,41 @@ def _build_tts(settings: Settings) -> TtsProvider:
             return MockTts()
         from personae.providers.local_tts import LocalTts
 
-        return LocalTts(settings.local_tts_base_url, settings.local_tts_model,
-                        settings.local_tts_voice, settings.local_tts_api_key)
+        return LocalTts(
+            settings.local_tts_base_url,
+            settings.local_tts_model,
+            settings.local_tts_voice,
+            settings.local_tts_api_key,
+        )
     if settings.tts_provider == "mock":
         return MockTts()
     if settings.tts_provider == "elevenlabs":
-        if not settings.elevenlabs_api_key:
+        if not settings.elevenlabs_tts_api_key:
             return MockTts()
         from personae.providers.elevenlabs import ElevenLabsTts
 
-        _require(settings.elevenlabs_voice, "ELEVENLABS_VOICE")
+        _require(settings.elevenlabs_tts_voice, "ELEVENLABS_TTS_VOICE")
         return ElevenLabsTts(
-            settings.elevenlabs_api_key, settings.elevenlabs_model, settings.elevenlabs_voice
+            settings.elevenlabs_tts_api_key,
+            settings.elevenlabs_tts_model,
+            settings.elevenlabs_tts_voice,
         )
     if not settings.deepgram_api_key:
         return MockTts()
 
-    if settings.tts_voice.startswith("flux-"):
+    if settings.deepgram_tts_voice.startswith("flux-"):
         from personae.providers.flux import FluxTts
 
         return FluxTts(
             api_key=_require(settings.deepgram_api_key, "DEEPGRAM_API_KEY"),
-            voice=settings.tts_voice,
+            voice=settings.deepgram_tts_voice,
         )
 
     from personae.providers.deepgram import DeepgramTts
 
     return DeepgramTts(
         api_key=_require(settings.deepgram_api_key, "DEEPGRAM_API_KEY"),
-        voice=settings.tts_voice,
+        voice=settings.deepgram_tts_voice,
     )
 
 

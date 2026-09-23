@@ -19,8 +19,8 @@ def test_elevenlabs_without_credentials_still_runs() -> None:
 
 
 def test_elevenlabs_with_key_requires_voice() -> None:
-    with pytest.raises(ValueError, match="ELEVENLABS_VOICE"):
-        build_tts(Settings(tts_provider="elevenlabs", elevenlabs_api_key="test"))
+    with pytest.raises(ValueError, match="ELEVENLABS_TTS_VOICE"):
+        build_tts(Settings(tts_provider="elevenlabs", elevenlabs_tts_api_key="test"))
 
 
 def test_bundled_avatar_hides_robot_accessory() -> None:

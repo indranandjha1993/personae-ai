@@ -150,10 +150,10 @@ if you want the camera: LM Studio's `/v1/messages` carries the picture.
 
 Speech runs on Flux, Deepgram's voice-agent line: it judges when a turn has
 ended from the words themselves rather than from a fixed silence, which is both
-quicker and harder to fool than timing a pause. `PERSONAE_EOT_THRESHOLD` is the
+quicker and harder to fool than timing a pause. `PERSONAE_DEEPGRAM_STT_EOT_THRESHOLD` is the
 one worth tuning — raise it and she waits longer but clips fewer words off the
 end of your sentence. Flux also says when a turn has *probably* ended, a beat
-before it is sure; set `PERSONAE_EAGER_EOT_THRESHOLD` and she drafts her
+before it is sure; set `PERSONAE_DEEPGRAM_STT_EAGER_EOT_THRESHOLD` and she drafts her
 answer from that moment, throwing it away if you carry on. Leave it off with a
 local model: it fires on a breath between words, and a local server keeps
 generating an abandoned draft after the request is dropped, so the real reply
@@ -169,14 +169,14 @@ Her voice is one socket held open for the whole conversation, and every
 sentence is a turn on it: connecting costs more than a sentence does, so it
 happens once rather than before each line.
 
-Flux speaks English only. For anything else set `PERSONAE_STT_LANGUAGE` with a
+Flux speaks English only. For anything else set `PERSONAE_DEEPGRAM_STT_LANGUAGE` with a
 `nova` model and a matching `aura-2` voice: Deepgram transcribes over a hundred
 and forty languages and synthesises seven, though not all on every model —
 Spanish and French need `nova-2` where German and Japanese work on `nova-3`. A
 pairing that would fail is refused at startup rather than at the socket, and so
 is a `flux` voice asked to speak something other than English. See
 `.env.example`. A character pack that names its own voice overrides
-`PERSONAE_TTS_VOICE`.
+`PERSONAE_DEEPGRAM_TTS_VOICE`.
 
 ## Running under Docker
 
@@ -247,7 +247,7 @@ credential is reported at startup, naming the variable.
 
 **She cuts you off, or waits too long.** Every turn is logged with how it
 ended: `ended by model at 0.86` is the recogniser deciding you had finished,
-`ended by timeout` is the pause limit. Raise `PERSONAE_EOT_THRESHOLD` if she
+`ended by timeout` is the pause limit. Raise `PERSONAE_DEEPGRAM_STT_EOT_THRESHOLD` if she
 jumps in on your pauses; lower it if she waits too long after you stop.
 `input peak` on the same line is how loud you reached her.
 

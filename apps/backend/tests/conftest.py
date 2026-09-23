@@ -13,6 +13,17 @@ import pytest
 @pytest.fixture(autouse=True)
 def _isolate_environment(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     for name in (
+        "PERSONAE_DEEPGRAM_STT_MODEL",
+        "PERSONAE_DEEPGRAM_STT_LANGUAGE",
+        "PERSONAE_DEEPGRAM_TTS_VOICE",
+        "PERSONAE_ELEVENLABS_TTS_API_KEY",
+        "PERSONAE_ELEVENLABS_TTS_MODEL",
+        "PERSONAE_ELEVENLABS_TTS_VOICE",
+        "PERSONAE_DEEPGRAM_STT_EOT_THRESHOLD",
+        "PERSONAE_DEEPGRAM_STT_EOT_TIMEOUT_MS",
+        "PERSONAE_DEEPGRAM_STT_EAGER_EOT_THRESHOLD",
+        "PERSONAE_DEEPGRAM_STT_ENDPOINTING_MS",
+        "PERSONAE_DEEPGRAM_STT_UTTERANCE_END_MS",
         "PERSONAE_CHARACTER_ID",
         "PERSONAE_APPEARANCE_ID",
         "PERSONAE_VOICE_ID",
@@ -26,9 +37,6 @@ def _isolate_environment(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         "PERSONAE_RHUBARB_PATH",
         "PERSONAE_RHUBARB_RECOGNIZER",
         "PERSONAE_TTS_PROVIDER",
-        "PERSONAE_ELEVENLABS_API_KEY",
-        "PERSONAE_ELEVENLABS_VOICE",
-        "PERSONAE_ELEVENLABS_MODEL",
         "PERSONAE_LLM_VISION",
         "PERSONAE_STT_MODE",
         "PERSONAE_LLM_MODE",

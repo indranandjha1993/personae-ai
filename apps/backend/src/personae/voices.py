@@ -18,7 +18,7 @@ def tts_mode(settings: Settings) -> Literal["mock", "live", "local"]:
     if settings.tts_provider == "local":
         return "local" if settings.local_tts_base_url else "mock"
     if settings.tts_provider == "elevenlabs":
-        return "live" if settings.elevenlabs_api_key else "mock"
+        return "live" if settings.elevenlabs_tts_api_key else "mock"
     if settings.tts_provider == "deepgram":
         return "live" if settings.deepgram_api_key else "mock"
     return "mock"
@@ -34,14 +34,14 @@ def voice_choices(settings: Settings) -> dict[str, VoiceChoice]:
             "Deepgram · configured voice",
             "live",
             settings.model_copy(update={"tts_provider": "deepgram"}),
-            settings.tts_voice,
+            settings.deepgram_tts_voice,
         )
-    if settings.elevenlabs_api_key and settings.elevenlabs_voice:
+    if settings.elevenlabs_tts_api_key and settings.elevenlabs_tts_voice:
         choices["elevenlabs:default"] = VoiceChoice(
             "ElevenLabs · configured voice",
             "live",
             settings.model_copy(update={"tts_provider": "elevenlabs"}),
-            f"elevenlabs:{settings.elevenlabs_voice}",
+            f"elevenlabs:{settings.elevenlabs_tts_voice}",
         )
     if settings.local_tts_base_url:
         for voice in settings.local_tts_voices:
