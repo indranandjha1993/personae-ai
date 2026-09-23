@@ -46,6 +46,12 @@ class Settings(BaseSettings):
         frozen=True,
     )
 
+    # Deployment-owned experience; no browser customization panel.
+    character_id: str = "bundled/seed"
+    appearance_id: str = ""
+    voice_id: str = "default"
+    render_quality: Literal["auto", "high", "low"] = "auto"
+
     deepgram_api_key: str | None = None
     tts_provider: Literal["deepgram", "elevenlabs", "local", "mock"] = "deepgram"
     local_tts_base_url: str | None = None

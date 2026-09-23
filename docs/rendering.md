@@ -163,17 +163,40 @@ streaming text or publish a price estimate; rates and GPU packing require actual
 provider/deployment data. Photorealism, live latency and costs remain unmeasured
 until credentials, a licensed asset and target hardware/deployment are supplied.
 
-## Browser customization and recovery
+## Server-owned character configuration
 
-The customization panel separates personality, appearance, voice and render quality.
-Wren, Sage and Atlas are three conversation personalities; they currently share the
-same bundled VRM asset. Add a licensed VRM in a character pack to offer a different
-appearance. Changing appearance or quality preserves an active conversation.
-Changing personality or voice starts fresh and is available between conversations.
+The browser has no personality, appearance, voice or quality selectors. Configure
+these in the repository `.env`:
 
-Low quality renders at device pixel ratio 1; Auto caps it at 1.5; High caps it at 2.
-Auto is a resolution cap, not a performance benchmark. Model failures and lost
-WebGL contexts show a retry action; voice can continue without the viewport.
+```dotenv
+PERSONAE_CHARACTER_ID=bundled/mentor
+PERSONAE_APPEARANCE_ID=bundled/seed
+PERSONAE_VOICE_ID=default
+PERSONAE_RENDER_QUALITY=auto
+```
+
+`CHARACTER_ID` selects a pack personality: `bundled/seed` (Wren),
+`bundled/mentor` (Sage), or `bundled/analyst` (Atlas). For custom prompts, add a
+character under `packs/local` and select its qualified ID. `APPEARANCE_ID` selects
+another pack's avatar; leave blank to use the personality's own avatar. The three
+bundled characters currently share one VRM model. Hosted characters manage their
+own appearance and voice; leave appearance blank for those deployments.
+
+`VOICE_ID=default` uses the selected `TTS_PROVIDER` and character pack voice.
+`deepgram:default` explicitly uses `PERSONAE_TTS_VOICE`, `elevenlabs:default` uses
+`PERSONAE_ELEVENLABS_VOICE`, and `local:af_heart` selects a configured local voice.
+Only IDs available for configured providers are accepted; invalid IDs fail startup.
+Credentials and personality prompts stay on the backend.
+
+Low quality caps device pixel ratio at 1; Auto at 1.5; High at 2. Auto is a
+resolution cap, not an adaptive performance benchmark. The avatar supports retry
+after load failure or lost WebGL context.
+
+After editing `.env`, recreate the backend with
+`docker compose up -d --force-recreate backend`, then refresh the browser.
+A plain Docker restart does not reload `env_file` values. For development outside
+Docker, restart the backend process. Backend and frontend must both be updated
+for this version's experience configuration response.
 
 ## Local voice development
 
@@ -182,8 +205,8 @@ Run a compatible local speech server such as
 `PERSONAE_LOCAL_TTS_BASE_URL=http://localhost:8880/v1`. When the backend runs in
 Docker and the speech server runs on the host, use `host.docker.internal` instead.
 Set `PERSONAE_LOCAL_TTS_VOICES=["af_heart","af_bella"]` to the installed voices.
-The browser catalogue only exposes configured voice IDs, never credentials or
-server URLs. Set `PERSONAE_TTS_PROVIDER=local` for the default voice to use it.
+The public catalogue only exposes configured voice IDs, never credentials or
+server URLs. Select one through `PERSONAE_VOICE_ID`. Set `PERSONAE_TTS_PROVIDER=local` for the default voice to use it.
 The server must return raw mono PCM16 at 24 kHz for `response_format=pcm`.
 An unavailable configured server reports an error; it does not invoke a paid fallback.
 

@@ -7,7 +7,7 @@ import { App } from './App'
 // jsdom has no WebGL, so the 3D stage cannot render here.
 vi.mock('./avatar/AvatarStage', () => ({ AvatarStage: () => null }))
 
-const BODY = { characters: [{ id: 'bundled/seed', display_name: 'Wren' }] }
+const BODY = { experience: { character_id: 'bundled/seed', appearance_id: 'bundled/seed', voice_id: 'default', quality: 'auto' }, characters: [{ id: 'bundled/seed', display_name: 'Wren' }] }
 
 beforeEach(() => {
   vi.stubGlobal(
@@ -69,6 +69,7 @@ describe('App', () => {
 it('uses the hosted player without starting a second local conversation', async () => {
   const { DEFAULT_AVATAR } = await import('./avatar/config')
   vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({
+    experience: { character_id: 'local/person', appearance_id: 'local/person', voice_id: 'default', quality: 'auto' },
     characters: [{ id: 'local/person', display_name: 'Person', avatar: {
       ...DEFAULT_AVATAR, renderer: 'pixel-streaming', player_url: 'https://player.example/session',
     } }],

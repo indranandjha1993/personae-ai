@@ -13,6 +13,7 @@ from typing import TypedDict
 from fastapi import FastAPI, Request, WebSocket
 from starlette.websockets import WebSocketDisconnect
 
+from personae.experience import experience_config
 from personae.live import LiveSession
 from personae.packs.loader import CharacterRegistry, load_packs
 from personae.protocol import (
@@ -63,6 +64,7 @@ class AppState(TypedDict):
     """State constructed once at startup and shared by every request."""
 
     settings: Settings
+    experience: dict[str, str]
     characters: CharacterRegistry
     stt: SttProvider
     llm: LlmProvider
@@ -82,6 +84,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[AppState]:
     # utterance of whoever happens to connect first.
     yield {
         "settings": settings,
+        "experience": experience_config(settings, characters),
         "characters": characters,
         "stt": build_stt(settings),
         "llm": build_llm(settings),
@@ -122,6 +125,7 @@ def create_app() -> FastAPI:
         """
         registry: CharacterRegistry = request.state.characters
         return {
+            "experience": request.state.experience,
             "characters": [
                 {
                     "id": character_id,

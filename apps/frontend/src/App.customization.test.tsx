@@ -22,86 +22,40 @@ const characters = [
   { id: 'bundled/coach', display_name: 'Coach', avatar: { ...DEFAULT_AVATAR, model_url: '/models/coach.vrm' } },
   { id: 'bundled/seed', display_name: 'Wren', avatar: DEFAULT_AVATAR },
 ]
-const voices = [
-  { id: 'default', label: 'Configured voice', mode: 'mock' },
-  { id: 'local', label: 'Local voice', mode: 'local' },
-]
-function setupFetch(catalogue = characters) {
-  vi.stubGlobal('fetch', vi.fn((url: string) => Promise.resolve({ ok: true,
-    json: () => Promise.resolve(url === '/api/voices' ? { voices } : { characters: catalogue }),
+const experience = { character_id: 'bundled/coach', appearance_id: 'bundled/seed', voice_id: 'local:af_heart', quality: 'low' }
+function setupFetch(config: unknown = experience) {
+  vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true,
+    json: () => Promise.resolve({ characters, experience: config }),
   })))
 }
 beforeEach(() => { setupFetch() })
 afterEach(() => { vi.unstubAllGlobals() })
 
-it('prefers Wren, labels mock audio honestly, and preserves live sessions on appearance changes', async () => {
+it('uses server settings independently and exposes no customization controls', async () => {
   render(<App />)
-  await screen.findByRole('heading', { name: 'Wren' })
-  await userEvent.click(screen.getByText('Make it yours'))
-  expect(screen.getByRole('option', { name: 'Demo voice' })).toBeInTheDocument()
-  await userEvent.click(screen.getByRole('button', { name: 'Start conversation' }))
-  expect(screen.getByLabelText('Personality')).toBeDisabled()
-  expect(screen.getByLabelText('Voice')).toBeDisabled()
-  await userEvent.selectOptions(screen.getByLabelText('Appearance'), 'bundled/coach')
-  await userEvent.selectOptions(screen.getByLabelText('Render quality'), 'low')
-  expect(screen.getByTestId('avatar')).toHaveTextContent('/models/coach.vrm')
+  await screen.findByRole('heading', { name: 'Coach' })
+  expect(await screen.findByTestId('avatar')).toHaveTextContent('/models/seed-san.vrm')
   expect(screen.getByTestId('avatar')).toHaveAttribute('data-quality', 'low')
-  expect(screen.getByRole('heading', { name: 'Wren' })).toBeInTheDocument()
-  expect(screen.getByTestId('status')).toHaveTextContent('listening')
-  expect(screen.getByText('bundled/seed with default')).toBeInTheDocument()
+  expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+  expect(screen.queryByText('Make it yours')).not.toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Start conversation' }))
+  expect(screen.getByText('bundled/coach with local:af_heart')).toBeInTheDocument()
+  expect(fetch).toHaveBeenCalledTimes(1)
 })
 
-it('starts fresh for personality and voice changes while preserving appearance', async () => {
+it('does not silently fall back to Wren for an invalid configured character', async () => {
+  setupFetch({ ...experience, character_id: 'missing/character' })
   render(<App />)
-  await screen.findByRole('button', { name: 'Start conversation' })
-  await userEvent.click(screen.getByText('Make it yours'))
-  await userEvent.click(screen.getByRole('button', { name: 'Start conversation' }))
-  await userEvent.click(screen.getByRole('button', { name: 'End conversation' }))
-  await userEvent.selectOptions(screen.getByLabelText('Personality'), 'bundled/coach')
-  expect(screen.queryByText('bundled/seed with default')).not.toBeInTheDocument()
-  expect(screen.getByTestId('avatar')).toHaveTextContent(DEFAULT_AVATAR.model_url)
-  await userEvent.click(screen.getByText('Make it yours'))
-  await userEvent.selectOptions(screen.getByLabelText('Voice'), 'local')
-  await userEvent.click(screen.getByRole('button', { name: 'Start conversation' }))
-  expect(screen.getByText('bundled/coach with local')).toBeInTheDocument()
-})
-
-it('recovers from an empty catalogue with a retry', async () => {
-  setupFetch([])
-  render(<App />)
-  expect(await screen.findByText(/No personalities are available/)).toBeInTheDocument()
+  expect(await screen.findByRole('alert')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Start conversation' })).not.toBeInTheDocument()
   setupFetch()
   await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
-  expect(await screen.findByRole('heading', { name: 'Wren' })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: 'Coach' })).toBeInTheDocument()
 })
 
-it('keeps the configured voice usable on older servers', async () => {
-  vi.stubGlobal('fetch', vi.fn((url: string) => Promise.resolve({ ok: url !== '/api/voices',
-    json: () => Promise.resolve({ characters }),
-  })))
+it('rejects an old response without deployment configuration', async () => {
+  setupFetch(null)
   render(<App />)
-  await screen.findByRole('heading', { name: 'Wren' })
-  await userEvent.click(screen.getByText('Make it yours'))
-  expect(await screen.findByText(/Voice options unavailable/)).toBeInTheDocument()
-  expect(screen.getByRole('option', { name: 'Configured voice' })).toBeInTheDocument()
-})
-
-
-it('switches from a hosted experience to a valid browser appearance', async () => {
-  const hosted = {
-    id: 'bundled/hosted', display_name: 'Hosted',
-    avatar: { ...DEFAULT_AVATAR, renderer: 'pixel-streaming' as const, player_url: 'https://player.example/session' },
-  }
-  // Starting with a hosted pack exercises an appearance initially pointing to that pack.
-  setupFetch([hosted, ...characters.filter((entry) => entry.id === 'bundled/coach')])
-  render(<App />)
-  expect(await screen.findByTitle('Live avatar')).toBeInTheDocument()
-  await userEvent.selectOptions(screen.getByLabelText('Experience'), 'bundled/coach')
-  expect(await screen.findByTestId('avatar')).toHaveTextContent('/models/coach.vrm')
-  expect(screen.queryByTitle('Live avatar')).not.toBeInTheDocument()
-  await userEvent.click(screen.getByText('Make it yours'))
-  expect(screen.getByLabelText('Appearance')).toHaveValue('bundled/coach')
-  expect(screen.getByText(/Answers when you pause; interrupt anytime/)).toBeInTheDocument()
-  await userEvent.click(screen.getByRole('button', { name: 'Start conversation' }))
-  expect(screen.getByText('bundled/coach with default')).toBeInTheDocument()
+  expect(await screen.findByRole('alert')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Start conversation' })).not.toBeInTheDocument()
 })

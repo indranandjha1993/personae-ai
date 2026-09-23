@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 
-import { parseCharacters, parseVoices, type Character, type VoiceOption } from './avatar/config'
+import { parseExperience, type Experience } from './avatar/config'
 import { PixelStreamingStage } from './avatar/PixelStreamingStage'
 import { downloadMetrics } from './diagnostics'
 
@@ -16,13 +16,7 @@ const AvatarStage = lazy(() =>
 
 
 export function App() {
-  const [characters, setCharacters] = useState<Character[]>([])
-  const [characterId, setCharacterId] = useState('')
-  const [appearanceId, setAppearanceId] = useState('')
-  const [voiceId, setVoiceId] = useState('default')
-  const [voices, setVoices] = useState<VoiceOption[]>([{ id: 'default', label: 'Configured voice', mode: 'live' }])
-  const [voiceNotice, setVoiceNotice] = useState('')
-  const [quality, setQuality] = useState<'auto' | 'high' | 'low'>('auto')
+  const [experience, setExperience] = useState<Experience | null>(null)
   const [loadError, setLoadError] = useState('')
   const [loading, setLoading] = useState(true)
   const [attempt, setAttempt] = useState(0)
@@ -33,11 +27,7 @@ export function App() {
       .then((response) => (response.ok ? response.json() : Promise.reject(new Error('failed'))))
       .then((body: unknown) => {
         if (controller.signal.aborted) return
-        const catalogue = parseCharacters(body)
-        const first = catalogue.find((entry) => entry.id === 'bundled/seed') ?? catalogue[0]
-        setCharacters(catalogue)
-        setCharacterId(first?.id ?? '')
-        setAppearanceId(first?.id ?? '')
+        setExperience(parseExperience(body))
         setLoading(false)
       })
       .catch((error: unknown) => {
@@ -45,23 +35,10 @@ export function App() {
         setLoadError('Could not reach the backend. Please try again.')
         setLoading(false)
       })
-    fetch('/api/voices', { signal: controller.signal })
-      .then((response) => (response.ok ? response.json() : Promise.reject(new Error('failed'))))
-      .then((body: unknown) => {
-        if (!controller.signal.aborted) {
-          setVoices(parseVoices(body))
-          setVoiceNotice('')
-        }
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setVoiceNotice('Voice options unavailable. Using the configured voice.')
-      })
     return () => { controller.abort() }
   }, [attempt])
 
-  const character = characters.find((entry) => entry.id === characterId)
-  // A hosted experience is never a model for the local browser renderer.
-  const appearance = characters.find((entry) => entry.id === appearanceId && entry.avatar.renderer === 'vrm') ?? character
+  const character = experience?.character
   const retry = () => {
     setLoadError('')
     setLoading(true)
@@ -81,23 +58,9 @@ export function App() {
           <button className="text-button" type="button" onClick={retry}>Try again</button>
         </div>
       )}
-      {character && appearance && (character.avatar.renderer === 'pixel-streaming'
-        ? <>
-            <label className="hosted-choice">Experience
-              <select value={character.id} onChange={(event) => {
-                setCharacterId(event.target.value)
-                setAppearanceId(event.target.value)
-              }}>
-                {characters.map((entry) => <option value={entry.id} key={entry.id}>{entry.display_name}{entry.avatar.renderer === 'pixel-streaming' ? ' · Hosted avatar' : ' · Browser avatar'}</option>)}
-              </select>
-            </label>
-            <p className="customize-note">This hosted experience manages its own voice and appearance.</p>
-            <PixelStreamingStage avatar={character.avatar} characterId={character.id} />
-          </>
-        : <Conversation key={`${character.id}:${voiceId}`} character={character} appearance={appearance}
-            characters={characters} onCharacterChange={setCharacterId} onAppearanceChange={setAppearanceId}
-            voiceId={voiceId} voices={voices} voiceNotice={voiceNotice} onVoiceChange={setVoiceId}
-            quality={quality} onQualityChange={setQuality} />)}
+      {experience && (experience.character.avatar.renderer === 'pixel-streaming'
+        ? <PixelStreamingStage avatar={experience.character.avatar} characterId={experience.character.id} />
+        : <Conversation {...experience} />)}
       {new URLSearchParams(window.location.search).has('diagnostics') &&
         <button type="button" onClick={downloadMetrics}>Download measurements</button>}
     </div>
@@ -150,22 +113,7 @@ function useVoiceLight(
   }, [features, ref])
 }
 
-interface ConversationProps {
-  character: Character
-  appearance: Character
-  characters: Character[]
-  onCharacterChange: (id: string) => void
-  onAppearanceChange: (id: string) => void
-  voiceId: string
-  voices: VoiceOption[]
-  voiceNotice: string
-  onVoiceChange: (id: string) => void
-  quality: 'auto' | 'high' | 'low'
-  onQualityChange: (quality: 'auto' | 'high' | 'low') => void
-}
-
-function Conversation({ character, appearance, characters, onCharacterChange, onAppearanceChange,
-  voiceId, voices, voiceNotice, onVoiceChange, quality, onQualityChange }: ConversationProps) {
+function Conversation({ character, appearance, voiceId, quality }: Experience) {
   const { id: characterId, display_name: name } = character
   const avatar = appearance.avatar
   const {
@@ -187,46 +135,6 @@ function Conversation({ character, appearance, characters, onCharacterChange, on
 
   return (
     <section aria-label="Conversation">
-      <details className="customize">
-        <summary>
-          <span className="customize-title">Make it yours</span>
-          <span className="customize-summary">{name} <span aria-hidden="true">/</span> {voices.find((voice) => voice.id === voiceId)?.label ?? 'Configured voice'}</span>
-          <span className="customize-action">Customize <span aria-hidden="true">+</span></span>
-        </summary>
-        <div className="customize-fields">
-          <label>Personality
-            <select value={characterId} disabled={active} onChange={(event) => { onCharacterChange(event.target.value) }} aria-describedby="customize-timing">
-              {characters.map((entry) => <option key={entry.id} value={entry.id}>{entry.display_name}{entry.avatar.renderer === 'pixel-streaming' ? ' · Hosted experience' : ''}</option>)}
-            </select>
-          </label>
-          <label>Appearance
-            <select value={appearance.id} onChange={(event) => { onAppearanceChange(event.target.value) }} aria-describedby="appearance-note">
-              {characters.filter((entry) => entry.avatar.renderer === 'vrm').map((entry) => <option key={entry.id} value={entry.id}>{entry.display_name}</option>)}
-            </select>
-          </label>
-          <label>Voice
-            <select value={voiceId} disabled={active} onChange={(event) => { onVoiceChange(event.target.value) }} aria-describedby="customize-timing">
-              {voices.map((voice) => <option key={voice.id} value={voice.id}>{voice.mode === 'mock' ? 'Demo voice' : voice.label}</option>)}
-            </select>
-          </label>
-          <label>Render quality
-            <select value={quality} onChange={(event) => {
-              const value = event.target.value
-              if (value === 'auto' || value === 'high' || value === 'low') onQualityChange(value)
-            }}>
-              <option value="auto">Auto</option><option value="high">High</option><option value="low">Low</option>
-            </select>
-          </label>
-        </div>
-        <p className="customize-note" id="customize-timing">{active
-          ? 'End this conversation to change personality or voice. Appearance and quality can change anytime.'
-          : 'Changing personality or voice starts a fresh conversation. Appearance and quality keep your conversation.'}</p>
-        <p className="customize-note" id="appearance-note">{characters.filter((entry) => entry.avatar.model_url === appearance.avatar.model_url).length > 1
-          ? 'Some personalities share the same avatar. Personality and appearance are independent.'
-          : 'Appearance is independent of personality.'} Auto balances clarity and device performance.</p>
-        {voiceNotice !== '' && <p className="customize-note" role="status">{voiceNotice}</p>}
-        {voices.find((voice) => voice.id === voiceId)?.mode === 'mock' && <p className="customize-note">Demo voice plays sample audio, not generated speech.</p>}
-      </details>
       <div className="stage-frame" data-state={status} ref={stage}>
         <div className="stage-light stage-light--idle" />
         <div className="stage-light stage-light--listen" />

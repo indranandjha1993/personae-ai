@@ -71,3 +71,25 @@ export function parseVoices(body: unknown): VoiceOption[] {
   if (!seen.has('default')) throw new Error('Missing default voice')
   return voices
 }
+
+export interface Experience {
+  character: Character
+  appearance: Character
+  voiceId: string
+  quality: 'auto' | 'high' | 'low'
+}
+export function parseExperience(body: unknown): Experience {
+  const characters = parseCharacters(body)
+  if (!record(body) || !record(body['experience'])) throw new Error('Missing experience configuration')
+  const config = body['experience']
+  const character = characters.find((entry) => entry.id === config['character_id'])
+  const appearance = characters.find((entry) => entry.id === config['appearance_id'])
+  const voiceId = config['voice_id']
+  const quality = config['quality']
+  if (!character || !appearance || typeof voiceId !== 'string' || !voiceId ||
+      (quality !== 'auto' && quality !== 'high' && quality !== 'low') ||
+      (character.avatar.renderer === 'vrm' && appearance.avatar.renderer !== 'vrm')) {
+    throw new Error('Invalid experience configuration')
+  }
+  return { character, appearance, voiceId, quality }
+}
