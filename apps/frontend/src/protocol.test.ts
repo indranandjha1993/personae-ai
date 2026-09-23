@@ -46,3 +46,13 @@ describe('audioFrom', () => {
     expect(audioFrom(frame).samples.length).toBe(1)
   })
 })
+
+it('rejects invalid cue timing and accepts real viseme channels', () => {
+  const base = { type: 'speech_timing', utterance_id: 'one', alignment: [],
+    visemes: [{ start: 0, end: 1, value: 'aa', weight: 1 }] }
+  expect(parseServerMessage(base)).toEqual(base)
+  expect(parseServerMessage({ ...base, visemes: [{ start: NaN, end: 1, value: 'aa', weight: 1 }] }))
+    .toBeNull()
+  expect(parseServerMessage({ ...base, visemes: [{ start: 2, end: 1, value: 'aa', weight: 1 }] }))
+    .toBeNull()
+})

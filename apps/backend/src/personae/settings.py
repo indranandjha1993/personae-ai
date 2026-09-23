@@ -47,6 +47,19 @@ class Settings(BaseSettings):
     )
 
     deepgram_api_key: str | None = None
+    tts_provider: Literal["deepgram", "elevenlabs", "local", "mock"] = "deepgram"
+    local_tts_base_url: str | None = None
+    local_tts_api_key: str | None = None
+    local_tts_model: str = "kokoro"
+    local_tts_voice: str = "af_heart"
+    local_tts_voices: tuple[str, ...] = ("af_heart", "af_bella")
+    elevenlabs_api_key: str | None = None
+    elevenlabs_model: str = "eleven_flash_v2_5"
+    elevenlabs_voice: str = ""
+    llm_vision: bool = False
+    lip_sync: Literal["audio", "rhubarb"] = "audio"
+    rhubarb_path: str = "rhubarb"
+    rhubarb_recognizer: Literal["phonetic", "pocketSphinx"] = "phonetic"
 
     # Speech model and voice. A character pack may name its own voice, in which
     # case this is only the fallback.
@@ -114,7 +127,11 @@ class Settings(BaseSettings):
             )
         # The Flux voices are English-only. Asking for another language would
         # otherwise be honoured silently by reading it in an English accent.
-        if self.tts_voice.startswith("flux-") and self.stt_language != "en":
+        if (
+            self.tts_provider == "deepgram"
+            and self.tts_voice.startswith("flux-")
+            and self.stt_language != "en"
+        ):
             raise ValueError(
                 f"PERSONAE_STT_LANGUAGE={self.stt_language} needs an aura-2 voice; "
                 "the flux voices speak English only"

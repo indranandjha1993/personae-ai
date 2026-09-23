@@ -8,6 +8,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { SpeechTimeline, type MouthWeights } from './audio/speech-timeline'
+import { recordMetric } from './diagnostics'
+
 import { BargeInDetector, frameLevel } from './audio/barge-in'
 import { startCapture, type Capture } from './audio/capture'
 import { PcmPlayer, SILENT_FEATURES, type AudioFeatures } from './audio/playback'
@@ -28,6 +31,7 @@ const FAREWELL_MAX_WAIT_MS = 15_000
 const THINKING_TIMEOUT_MS = 45_000
 
 export interface Conversation {
+  mouthCues: () => MouthWeights | null
   status: Status
   /** What she has said so far this turn, growing sentence by sentence. */
   spokenSoFar: string
@@ -54,7 +58,8 @@ export interface Conversation {
   stop: () => void
 }
 
-export function useConversation(characterId: string): Conversation {
+export function useConversation(characterId: string, voiceId = 'default'): Conversation {
+  const speechTimeline = useRef(new SpeechTimeline())
   const [status, setStatus] = useState<Status>('idle')
   const [transcript, setTranscript] = useState('')
   const [reply, setReply] = useState('')
@@ -81,6 +86,10 @@ export function useConversation(characterId: string): Conversation {
   const bargeInRef = useRef(new BargeInDetector())
   const cameraRef = useRef<Camera | null>(null)
   const pendingFrame = useRef(false)
+  const cameraGeneration = useRef(0)
+  const cameraStarting = useRef(false)
+  const farewellTimer = useRef<number | null>(null)
+  const receivedReply = useRef(false)
   const startingRef = useRef(false)
   const generationRef = useRef(0)
   const spokenRef = useRef(false)
@@ -88,6 +97,17 @@ export function useConversation(characterId: string): Conversation {
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
 
   const teardown = useCallback(() => {
+    speechTimeline.current.clear()
+    if (farewellTimer.current !== null) window.clearInterval(farewellTimer.current)
+    farewellTimer.current = null
+    cameraGeneration.current += 1
+    cameraStarting.current = false
+    queued.current = []
+    pendingExpression.current = null
+    pendingFrame.current = false
+    frameSentRef.current = false
+    suppressing.current = false
+    inputLevelRef.current = 0
     generationRef.current += 1
     startingRef.current = false
     spokenRef.current = false
@@ -113,9 +133,11 @@ export function useConversation(characterId: string): Conversation {
     // Guards the whole async start, not just the resolved capture: the refs
     // stay null until getUserMedia resolves, so a second click would otherwise
     // open a second microphone that nothing can stop.
-    if (startingRef.current) return
+    if (startingRef.current || sessionRef.current) return
     startingRef.current = true
     const generation = ++generationRef.current
+    const stale = () => generationRef.current !== generation
+    receivedReply.current = false
     setTranscript('')
     setReply('')
     setDetail('')
@@ -131,14 +153,46 @@ export function useConversation(characterId: string): Conversation {
     // The player is still told the rate the server announces, so a server
     // synthesising at something else stays correct -- it just costs the
     // resampling this avoids in the common case.
-    const context = new AudioContext({ sampleRate: DEFAULT_SAMPLE_RATE })
+    let context: AudioContext
+    try {
+      context = new AudioContext({ sampleRate: DEFAULT_SAMPLE_RATE })
+    } catch {
+      startingRef.current = false
+      setDetail('Audio is unavailable in this browser.')
+      setStatus('error')
+      return
+    }
     contextRef.current = context
+    void context.resume().catch(() => {
+      if (stale()) return
+      setDetail('Audio could not start. Try starting the conversation again.')
+      teardown()
+      setStatus('error')
+    })
     let player: PcmPlayer | null = null
+    let audioOffset = 0
+    let sampleRate = DEFAULT_SAMPLE_RATE
+    let transcriptAt = 0
+    let firstAudio = false
 
     bargeInRef.current.reset()
     const session = openSession(characterId, {
       onMessage: (message) => {
+        if (stale()) return
         switch (message.type) {
+          case 'speech_start':
+            if (suppressing.current) break
+            speechTimeline.current.begin(message.utterance_id)
+            audioOffset = 0
+            break
+          case 'speech_timing':
+            if (!suppressing.current) {
+              speechTimeline.current.add(message.utterance_id, message.visemes)
+            }
+            break
+          case 'metrics':
+            for (const [name, value] of Object.entries(message.values)) recordMetric(name, value)
+            break
           case 'hearing':
             // Provisional: the listener watching themselves be heard. It is
             // replaced by the next one and never acted on.
@@ -146,6 +200,9 @@ export function useConversation(characterId: string): Conversation {
             setProgressAt(Date.now())
             break
           case 'transcript':
+            receivedReply.current = false
+            transcriptAt = performance.now()
+            firstAudio = false
             suppressing.current = false
             setTranscript(message.text)
             setDetail('')
@@ -174,6 +231,8 @@ export function useConversation(characterId: string): Conversation {
             pendingExpression.current = null
             break
           case 'reply':
+            receivedReply.current = true
+            queued.current = queued.current.filter((item) => item.playedBy !== null)
             // Closes the turn. The full text supersedes what was accumulated,
             // so anything the splitter dropped is still shown.
             setReply(message.text)
@@ -195,27 +254,36 @@ export function useConversation(characterId: string): Conversation {
             pendingExpression.current = { gesture: message.gesture, emotion: message.emotion }
             break
           case 'ready':
+            sampleRate = message.sample_rate
             player = new PcmPlayer(context, message.sample_rate)
             playerRef.current = player
             break
           case 'audio':
-            if (suppressing.current) break
+            if (suppressing.current || message.samples.length === 0) break
             spokenRef.current = true
             setStatus('speaking')
-            // The first chunk of a sentence fixes when that sentence ends.
-            for (const pending of queued.current) {
-              if (pending.playedBy === null) {
-                pending.playedBy = (playerRef.current?.scheduledUntil ?? 0) + 0.001
-                break
-              }
-            }
             if (!player) {
               player = new PcmPlayer(context, DEFAULT_SAMPLE_RATE)
               playerRef.current = player
             }
-            player.enqueue(message.samples)
+            {
+              const scheduled = player.enqueue(message.samples)
+              const duration = message.samples.length / sampleRate
+              speechTimeline.current.schedule(audioOffset, audioOffset + duration, scheduled)
+              audioOffset += duration
+              if (!firstAudio && message.samples.length > 0) {
+                firstAudio = true
+                recordMetric('transcript_to_scheduled_audio_ms', performance.now() - transcriptAt +
+                  Math.max(0, scheduled - context.currentTime) * 1000)
+              }
+              // Captions and gesture cues begin at the actual first sample.
+              const pending = queued.current.find((item) => item.playedBy === null)
+              if (pending) pending.playedBy = scheduled
+            }
             break
           case 'interrupted':
+            speechTimeline.current.clear()
+            queued.current = []
             suppressing.current = false
             pendingExpression.current = null
             setGesture('idle')
@@ -231,7 +299,9 @@ export function useConversation(characterId: string): Conversation {
             // Wait for the goodbye to actually finish. A fixed delay cut her
             // off mid-word, because the audio is queued long before it plays.
             const started = Date.now()
+            if (farewellTimer.current !== null) window.clearInterval(farewellTimer.current)
             const closing = window.setInterval(() => {
+              if (stale()) { window.clearInterval(closing); return }
               const done = playerRef.current?.isFinished() ?? true
               if (done || Date.now() - started > FAREWELL_MAX_WAIT_MS) {
                 window.clearInterval(closing)
@@ -239,9 +309,12 @@ export function useConversation(characterId: string): Conversation {
                 setStatus('idle')
               }
             }, 150)
+            farewellTimer.current = closing
             break
           }
           case 'error':
+            speechTimeline.current.clear()
+            queued.current = []
             // One failed turn, reported by the server; the conversation goes
             // on. A connection that has actually died arrives as a close.
             setDetail(message.detail)
@@ -257,23 +330,24 @@ export function useConversation(characterId: string): Conversation {
         }
       },
       onError: (message) => {
+        if (stale()) return
         setDetail(message)
         teardown()
         setStatus('error')
       },
       onClose: (event) => {
+        if (stale()) return
         // A clean close is the end of the conversation; anything else is a
         // connection that died under us and must be surfaced.
         if (!event.wasClean) setDetail('Connection lost.')
         teardown()
         setStatus(event.wasClean ? 'idle' : 'error')
       },
-    })
+    }, voiceId)
     sessionRef.current = session
 
-    const stale = () => generationRef.current !== generation
-
     startCapture((frame) => {
+      if (stale()) return
       session.sendAudio(frame)
       inputLevelRef.current = frameLevel(frame)
       // One still per utterance. Ungated this ran on every audio frame, which
@@ -283,8 +357,9 @@ export function useConversation(characterId: string): Conversation {
         pendingFrame.current = true
         void cameraRef.current
           .grab()
-          .then((frame) => (frame ? session.sendFrame(frame) : undefined))
-          .finally(() => { pendingFrame.current = false })
+          .then((frame) => (frame && !stale() ? session.sendFrame(frame) : undefined))
+          .catch(() => { /* A lost camera frame must not end voice conversation. */ })
+          .finally(() => { if (!stale()) pendingFrame.current = false })
       }
 
       // Only while she is actually speaking. Ungated, the threshold collapses
@@ -296,7 +371,10 @@ export function useConversation(characterId: string): Conversation {
         if (bargeInRef.current.observe(frameLevel(frame), speaking)) {
           spokenRef.current = false
           bargeInRef.current.reset()
+          const stoppedAt = performance.now()
           player.stop()
+          speechTimeline.current.clear()
+          recordMetric('local_interrupt_stop_ms', performance.now() - stoppedAt)
           // Messages already in flight would otherwise restart her audio and
           // add sentences to the caption that were never heard.
           suppressing.current = true
@@ -316,26 +394,39 @@ export function useConversation(characterId: string): Conversation {
         captureRef.current = capture
       })
       .catch((error: unknown) => {
+        if (stale()) return
         setDetail(error instanceof Error ? error.message : 'microphone unavailable')
         teardown()
         setStatus('error')
       })
-      .finally(() => { startingRef.current = false })
-  }, [characterId, teardown])
+      .finally(() => { if (!stale()) startingRef.current = false })
+  }, [characterId, voiceId, teardown])
 
   const toggleCamera = useCallback(() => {
+    const token = ++cameraGeneration.current
+    if (cameraStarting.current) {
+      cameraStarting.current = false
+      return
+    }
     if (cameraRef.current) {
       cameraRef.current.stop()
       cameraRef.current = null
       setCameraStream(null)
       return
     }
+    cameraStarting.current = true
     startCamera()
       .then((camera) => {
+        if (token !== cameraGeneration.current) { camera.stop(); return }
         cameraRef.current = camera
         setCameraStream(camera.stream)
       })
-      .catch(() => { setDetail('Could not open the camera.') })
+      .catch(() => {
+        if (token === cameraGeneration.current) setDetail('Could not open the camera.')
+      })
+      .finally(() => {
+        if (token === cameraGeneration.current) cameraStarting.current = false
+      })
   }, [])
 
   const stop = useCallback(() => {
@@ -390,6 +481,10 @@ export function useConversation(characterId: string): Conversation {
         // The turn is over; hands come back down rather than holding the last
         // gesture like a statue.
         setGesture('idle')
+        if (receivedReply.current) {
+          spokenRef.current = false
+          setStatus('listening')
+        }
       }
     }, 100)
     return () => { window.clearInterval(tick) }
@@ -405,7 +500,13 @@ export function useConversation(characterId: string): Conversation {
     [],
   )
 
+  const mouthCues = useCallback(() => {
+    const player = playerRef.current
+    return player ? speechTimeline.current.sample(player.now) : null
+  }, [])
+
   return {
+    mouthCues,
     status,
     transcript,
     reply,

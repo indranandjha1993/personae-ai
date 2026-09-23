@@ -75,3 +75,11 @@ emotions = ["neutral", "amused", "focused", "annoyed"]
 `packs/local/` is gitignored. Drop a pack there to use characters that should never be
 committed. This is the supported path for personal or licensed characters — it needs no code
 change and no fork.
+
+## Avatar assets and renderer
+
+Characters may include an `[avatar]` block with `renderer`, `model_url`,
+`motions_url`, `hidden_meshes`, and `[avatar.mouth_map]`. Existing packs without
+this block keep the legacy VRM path. A `pixel-streaming` renderer requires a
+`player_url`. See [rendering and speech integration](rendering.md) for complete
+examples, protocol timing, asset requirements and the Unreal deployment boundary.

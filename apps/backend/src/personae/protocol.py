@@ -20,6 +20,8 @@ from pydantic import (
     field_validator,
 )
 
+from personae.speech_events import CharacterCue, VisemeCue
+
 # 16-bit PCM at 16 kHz is 32 kB per second; this caps a single frame at roughly
 # two seconds, which is far above the ~100 ms frames the client actually sends.
 MAX_FRAME_BYTES = 64_000
@@ -240,3 +242,22 @@ class FarewellMessage(ServerMessage):
 class ErrorMessage(ServerMessage):
     type: Literal["error"]
     detail: str
+
+
+class SpeechStartMessage(ServerMessage):
+    type: Literal["speech_start"] = "speech_start"
+    utterance_id: str
+
+
+class SpeechTimingMessage(ServerMessage):
+    type: Literal["speech_timing"] = "speech_timing"
+    utterance_id: str
+    alignment: tuple[CharacterCue, ...] = ()
+    visemes: tuple[VisemeCue, ...] = ()
+
+
+class MetricsMessage(ServerMessage):
+    type: Literal["metrics"] = "metrics"
+    reply_id: str
+    # Relative to reply generation start (possibly speculative), not speech end.
+    values: dict[str, float]

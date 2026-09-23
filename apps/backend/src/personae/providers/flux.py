@@ -26,7 +26,7 @@ from deepgram.speak.v2.types import (
 )
 
 from personae.protocol import PLAYBACK_SAMPLE_RATE
-from personae.providers.base import Heard, ProviderError, Speaker
+from personae.providers.base import Heard, ProviderError
 
 logger = logging.getLogger(__name__)
 
@@ -192,7 +192,9 @@ class FluxTts:
         """A character's own voice wins; the configured one fills the gap."""
         return requested or self._voice
 
-    async def open(self, voice: str, rate: float = 1.0, expressivity: int | None = None) -> Speaker:
+    async def open(
+        self, voice: str, rate: float = 1.0, expressivity: int | None = None
+    ) -> "FluxSpeaker":
         speaker = FluxSpeaker(
             self._client, self.voice_for(voice), _supported_speed(rate), expressivity
         )

@@ -13,5 +13,5 @@ def test_health_reports_which_providers_are_live() -> None:
         "status": "ok",
         "providers": {"stt": "mock", "llm": "mock", "tts": "mock"},
         "vision": False,
-        "characters": 1,
+        "characters": 3,
     }

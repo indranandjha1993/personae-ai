@@ -56,3 +56,28 @@ def test_skips_a_malformed_frame_rather_than_failing_the_reply() -> None:
 def test_tolerates_frames_without_content() -> None:
     assert _fragment_of('data: {"choices":[{"delta":{}}]}') == ""
     assert _fragment_of('data: {"choices":[]}') == ""
+
+
+async def test_opt_in_vision_sends_image_parts(monkeypatch: pytest.MonkeyPatch) -> None:
+    import json
+
+    seen: list[object] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content)["messages"][-1]["content"])
+        return httpx.Response(200, content=_sse("[DONE]"))
+
+    original = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: original(**kwargs, transport=httpx.MockTransport(handler)),
+    )
+    llm = OpenAiCompatibleLlm("https://openrouter.ai/api/v1", "test", "test", vision=True)
+    _ = [part async for part in llm.respond("Persona", "Look", image=b"jpeg")]
+    assert seen == [
+        [
+            {"type": "text", "text": "Look"},
+            {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,anBlZw=="}},
+        ]
+    ]

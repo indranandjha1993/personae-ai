@@ -5,6 +5,7 @@ endpoint, and depending on a client library here would tie the project to a
 particular provider's release cycle for no benefit.
 """
 
+import base64
 import json
 import logging
 from collections.abc import AsyncIterator, Sequence
@@ -25,10 +26,11 @@ MAX_TOKENS = 200
 class OpenAiCompatibleLlm:
     """Character-voiced replies, streamed as server-sent events."""
 
-    def __init__(self, base_url: str, api_key: str, model: str) -> None:
+    def __init__(self, base_url: str, api_key: str, model: str, vision: bool = False) -> None:
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._model = model
+        self._vision = vision
 
     async def respond(
         self,
@@ -37,11 +39,22 @@ class OpenAiCompatibleLlm:
         history: Sequence[Message] = (),
         image: bytes | None = None,
     ) -> AsyncIterator[str]:
-        if image is not None:
+        if image is not None and not self._vision:
             logger.warning(
                 "this endpoint's wire format carries no image; set "
                 "PERSONAE_LLM_WIRE=anthropic to enable vision"
             )
+        content: str | list[dict[str, object]] = transcript
+        if image is not None and self._vision:
+            content = [
+                {"type": "text", "text": transcript},
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": "data:image/jpeg;base64," + base64.b64encode(image).decode("ascii")
+                    },
+                },
+            ]
         payload = {
             "model": self._model,
             "stream": True,
@@ -49,7 +62,7 @@ class OpenAiCompatibleLlm:
             "messages": [
                 {"role": "system", "content": system_prompt},
                 *history,
-                {"role": "user", "content": transcript},
+                {"role": "user", "content": content},
             ],
         }
         headers = {"Authorization": f"Bearer {self._api_key}"}

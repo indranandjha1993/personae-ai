@@ -29,6 +29,7 @@ from personae.protocol import (
 from personae.providers.base import LlmProvider, SttProvider, TtsProvider
 from personae.providers.factory import build_llm, build_stt, build_tts
 from personae.settings import Settings
+from personae.voices import tts_mode, voice_choices
 
 
 def _repo_root() -> Path:
@@ -105,9 +106,10 @@ def create_app() -> FastAPI:
             "providers": {
                 "stt": "live" if settings.deepgram_api_key else "mock",
                 "llm": "live" if settings.llm_api_key else "mock",
-                "tts": "live" if settings.deepgram_api_key else "mock",
+                "tts": "mock" if tts_mode(settings) == "mock" else "live",
             },
-            "vision": settings.llm_wire == "anthropic" and bool(settings.llm_api_key),
+            "vision": (settings.llm_wire == "anthropic" or settings.llm_vision)
+            and bool(settings.llm_api_key),
             "characters": len(registry),
         }
 
@@ -126,11 +128,19 @@ def create_app() -> FastAPI:
                     "display_name": character.display_name,
                     "theme": character.theme.model_dump(),
                     "expression": character.expression.model_dump(),
+                    "avatar": character.avatar.model_dump(),
                 }
                 for character_id in registry.ids()
                 for character in (registry.get(character_id),)
             ]
         }
+
+    @app.get("/voices")
+    async def voices(request: Request) -> dict[str, object]:
+        return {"voices": [
+            {"id": key, "label": choice.label, "mode": choice.mode}
+            for key, choice in voice_choices(request.state.settings).items()
+        ]}
 
     @app.websocket("/ws/live/{pack}/{character}")
     async def live(socket: WebSocket, pack: str, character: str) -> None:
@@ -149,9 +159,21 @@ def create_app() -> FastAPI:
             await socket.close(code=4004, reason="unknown character")
             return
 
+        selected = socket.query_params.get("voice", "default")
+        choices = voice_choices(settings)
+        if selected not in choices:
+            await socket.close(code=4400, reason="unknown voice")
+            return
+        choice = choices[selected]
+        tts = socket.state.tts if selected == "default" else build_tts(choice.settings)
+        if choice.voice is not None:
+            persona = persona.model_copy(update={
+                "voice": persona.voice.model_copy(update={"provider_voice": choice.voice})
+            })
+
         await socket.accept()
         await socket.send_json(ServerMessage.ready(PLAYBACK_SAMPLE_RATE).model_dump())
-        session = LiveSession(persona, socket.state.stt, socket.state.llm, socket.state.tts)
+        session = LiveSession(persona, socket.state.stt, socket.state.llm, tts)
 
         # Reading and replying run concurrently: the whole point is that the
         # listener can speak while she is still talking.

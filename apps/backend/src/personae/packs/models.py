@@ -5,9 +5,9 @@ disk and the pipeline, and they are validated strictly so a malformed pack fails
 at startup with a precise message rather than midway through a conversation.
 """
 
-from typing import Annotated
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 SCHEMA_VERSION = 1
 
@@ -57,6 +57,37 @@ class Expression(BaseModel):
     emotions: Annotated[tuple[str, ...], Field(min_length=1)]
 
 
+class AvatarConfig(BaseModel):
+    """Rendering assets are supplied by licensed character packs."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    renderer: Literal["vrm", "pixel-streaming"] = "vrm"
+    model_url: str = "/models/seed-san.vrm"
+    motions_url: str = "/motions/index.json"
+    player_url: str | None = None
+    # Canonical vowel/closed channels to VRM expression names.
+    mouth_map: dict[Literal["aa", "ih", "ou", "ee", "oh", "closed"], str] = Field(
+        default_factory=lambda: {name: name for name in ("aa", "ih", "ou", "ee", "oh")}
+    )
+    hidden_meshes: tuple[str, ...] = ()
+
+    @field_validator("model_url", "motions_url", "player_url")
+    @classmethod
+    def safe_url(cls, value: str | None) -> str | None:
+        if value is not None and not (
+            (value.startswith("/") and not value.startswith("//") and "\\" not in value)
+            or value.startswith("https://")
+        ):
+            raise ValueError("avatar URLs must be local absolute paths or HTTPS URLs")
+        return value
+
+    @model_validator(mode="after")
+    def player_required(self) -> "AvatarConfig":
+        if self.renderer == "pixel-streaming" and not self.player_url:
+            raise ValueError("pixel-streaming requires player_url")
+        return self
+
+
 class Character(BaseModel):
     """A single character, as declared in one TOML file."""
 
@@ -73,6 +104,7 @@ class Character(BaseModel):
     voice: Voice
     expression: Expression
     theme: Theme = Theme()
+    avatar: AvatarConfig = Field(default_factory=AvatarConfig)
 
 
 class PackManifest(BaseModel):

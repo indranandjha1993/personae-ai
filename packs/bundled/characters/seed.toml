@@ -149,3 +149,19 @@ gestures = [
   "gesture-namaste",
 ]
 emotions = ["neutral", "amused", "focused", "alert"]
+
+
+[avatar]
+renderer = "vrm"
+model_url = "/models/seed-san.vrm"
+motions_url = "/motions/index.json"
+# This model includes a separate robot-arm accessory beside the shoulder.
+# Hide the accessory mesh, leaving the humanoid rig and clothing intact.
+hidden_meshes = ["robo_arm"]
+
+[avatar.mouth_map]
+aa = "aa"
+ih = "ih"
+ou = "ou"
+ee = "ee"
+oh = "oh"

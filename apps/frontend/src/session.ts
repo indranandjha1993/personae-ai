@@ -36,15 +36,22 @@ const MAX_BUFFERED_BYTES = 512_000
 /** What may wait for the socket to open: JSON text, or a raw audio frame. */
 type Outbound = string | Int16Array<ArrayBuffer>
 
-export function openSession(characterId: string, handlers: SessionHandlers): Session {
+export function openSession(characterId: string, handlers: SessionHandlers, voiceId = 'default'): Session {
   const url = new URL(`/ws/live/${characterId}`, window.location.href)
+  if (voiceId !== 'default') url.searchParams.set('voice', voiceId)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   const socket = new WebSocket(url)
+  let closed = false
   // Her voice comes back as raw frames; a Blob would need an async read.
   socket.binaryType = 'arraybuffer'
 
   socket.onmessage = (event: MessageEvent<string | ArrayBuffer>) => {
+    if (closed) return
     if (event.data instanceof ArrayBuffer) {
+      if (event.data.byteLength % 2) {
+        handlers.onError?.('server sent incomplete audio')
+        return
+      }
       handlers.onMessage(audioFrom(event.data))
       return
     }
@@ -55,7 +62,11 @@ export function openSession(characterId: string, handlers: SessionHandlers): Ses
       handlers.onError?.('server sent a malformed message')
       return
     }
-    const message = parseServerMessage(payload)
+    let message: ServerMessage | null
+    try { message = parseServerMessage(payload) } catch {
+      handlers.onError?.('server sent invalid audio')
+      return
+    }
     if (message === null) {
       handlers.onError?.('server sent an unrecognised message')
       return
@@ -63,8 +74,8 @@ export function openSession(characterId: string, handlers: SessionHandlers): Ses
     handlers.onMessage(message)
   }
 
-  socket.onclose = (event) => { handlers.onClose?.(event) }
-  socket.onerror = () => { handlers.onError?.('connection failed') }
+  socket.onclose = (event) => { if (!closed) handlers.onClose?.(event) }
+  socket.onerror = () => { if (!closed) handlers.onError?.('connection failed') }
 
   // Roughly two seconds of audio in 80ms frames. Capture starts before the
   // handshake finishes, so without this the first word of the conversation
@@ -73,11 +84,13 @@ export function openSession(characterId: string, handlers: SessionHandlers): Ses
   let pending: Outbound[] = []
 
   socket.addEventListener('open', () => {
+    if (closed) return
     for (const payload of pending) socket.send(payload)
     pending = []
   })
 
-  const sendWhenOpen = (payload: object | Int16Array<ArrayBuffer>) => {
+  const sendWhenOpen = (payload: object | Int16Array<ArrayBuffer>, control = false) => {
+    if (closed) return
     // Audio goes as it is; everything else is JSON.
     const encoded: Outbound = payload instanceof Int16Array ? payload : JSON.stringify(payload)
     if (socket.readyState === WebSocket.OPEN) {
@@ -85,19 +98,20 @@ export function openSession(characterId: string, handlers: SessionHandlers): Ses
       // reported as an error: a conversation that survives a hiccup is better
       // than one torn down over it, and the cap is high enough that reaching
       // it means the connection is already failing on its own.
-      if (socket.bufferedAmount > MAX_BUFFERED_BYTES) return
+      if (!control && socket.bufferedAmount > MAX_BUFFERED_BYTES) return
       socket.send(encoded)
       return
     }
-    if (socket.readyState === WebSocket.CONNECTING && pending.length < MAX_PENDING) {
-      pending.push(encoded)
+    if (socket.readyState === WebSocket.CONNECTING) {
+      if (control && pending.length >= MAX_PENDING) pending.shift()
+      if (pending.length < MAX_PENDING) pending.push(encoded)
     }
   }
 
   return {
     sendAudio: (frame) => { sendWhenOpen(frame) },
-    stopSpeaking: () => { sendWhenOpen({ type: 'stop' }) },
-    interrupt: () => { sendWhenOpen({ type: 'interrupt' }) },
+    stopSpeaking: () => { sendWhenOpen({ type: 'stop' }, true) },
+    interrupt: () => { sendWhenOpen({ type: 'interrupt' }, true) },
     sendFrame: async (jpeg) => {
       const bytes = new Uint8Array(await jpeg.arrayBuffer())
       let binary = ''
@@ -106,6 +120,13 @@ export function openSession(characterId: string, handlers: SessionHandlers): Ses
       }
       sendWhenOpen({ type: 'vision', jpeg: btoa(binary) })
     },
-    close: () => { socket.close() },
+    close: () => {
+      closed = true
+      pending = []
+      socket.onmessage = null
+      socket.onclose = null
+      socket.onerror = null
+      socket.close()
+    },
   }
 }

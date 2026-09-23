@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from personae.conversation import Message
+from personae.speech_events import SpeechChunk
 
 
 class ProviderError(RuntimeError):
@@ -80,7 +81,7 @@ class Speaker(Protocol):
     session opens its speaker once and says everything through it.
     """
 
-    def say(self, text: str, rate: float | None = None) -> AsyncIterator[bytes]:
+    def say(self, text: str, rate: float | None = None) -> AsyncIterator[bytes | SpeechChunk]:
         """Yield PCM audio for ``text``.
 
         ``rate`` sets the pace from this line on; ``None`` leaves it as it is.

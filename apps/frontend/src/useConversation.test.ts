@@ -137,3 +137,15 @@ describe('ending a turn', () => {
   })
 })
 
+
+describe('session isolation', () => {
+  it('ignores old callbacks after ending and restarting', async () => {
+    const { result } = await started()
+    const oldDeliver = deliver
+    act(() => { result.current.stop() })
+    await act(async () => { result.current.start(); await Promise.resolve() })
+    act(() => { deliver({ type: 'transcript', text: 'New session' }) })
+    act(() => { oldDeliver({ type: 'transcript', text: 'Stale session' }) })
+    expect(result.current.transcript).toBe('New session')
+  })
+})

@@ -13,6 +13,9 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 
 import type { AudioFeatures } from '../audio/playback'
+import { DEFAULT_AVATAR, type AvatarConfig } from './config'
+import type { MouthWeights } from '../audio/speech-timeline'
+
 import { BlinkController } from './blink'
 import { EmphasisTracker } from './emphasis'
 import { LipSync, mouthShape } from './lip-sync'
@@ -41,34 +44,6 @@ interface ActiveClip {
   fading: number | null
 }
 
-/**
- * Skin tint, multiplied over the model's own texture.
- *
- * A factor rather than a flat colour, so the painted shading and the blush at
- * the cheeks survive: white leaves the model exactly as its author made it,
- * and warmer or deeper tones shift it without flattening the detail.
- */
-const SKIN_TINT = new THREE.Color(0.93, 0.78, 0.7)
-
-/** Materials that make up her skin, by the names this model uses. */
-const SKIN_MATERIALS = /^(body_bake|body_nm)$/
-
-function tintSkin(object: THREE.Object3D): void {
-  if (!(object instanceof THREE.Mesh)) return
-  const material = object.material as THREE.Material | THREE.Material[]
-  for (const entry of Array.isArray(material) ? material : [material]) {
-    if (!SKIN_MATERIALS.test(entry.name)) continue
-    // MToon keeps a separate shade colour for the lit and unlit sides; both
-    // are tinted, or the shadowed half of her face stays the original tone.
-    const tintable = entry as THREE.Material & {
-      color?: THREE.Color
-      shadeColorFactor?: THREE.Color
-    }
-    tintable.color?.multiply(SKIN_TINT)
-    tintable.shadeColorFactor?.multiply(SKIN_TINT)
-  }
-}
-
 /** How far each emotion opens or closes the posture, for models without blendshapes. */
 const EMOTION_POSTURE: Record<string, number> = {
   happy: 1,
@@ -80,6 +55,8 @@ const EMOTION_POSTURE: Record<string, number> = {
 }
 
 export interface AvatarProps {
+  avatarConfig?: AvatarConfig
+  mouthCues?: (() => MouthWeights | null) | undefined
   modelUrl: string
   gesture: string
   emotion: string
@@ -90,6 +67,8 @@ export interface AvatarProps {
 }
 
 export function Avatar({
+  avatarConfig = DEFAULT_AVATAR,
+  mouthCues,
   modelUrl,
   gesture,
   emotion,
@@ -134,9 +113,10 @@ export function Avatar({
 
     loader.loadAsync(modelUrl).then(
       (gltf) => {
-        if (cancelled) return
+        if (cancelled) { VRMUtils.deepDispose(gltf.scene); return }
         const loaded = gltf.userData['vrm'] as VRM | undefined
         if (!loaded) {
+          VRMUtils.deepDispose(gltf.scene)
           onError('That file loaded but is not a VRM model.')
           return
         }
@@ -153,9 +133,8 @@ export function Avatar({
           // Props and limbs that intrude on a portrait. Matching by name keeps
           // the clothing intact, which a bounds test does not.
           // The prop arm is a separate mesh and simply goes.
-          if (/robo/i.test(object.name)) object.visible = false
+          if (avatarConfig.hidden_meshes.includes(object.name)) object.visible = false
 
-          tintSkin(object)
         })
 
         // The arms are posed every frame by the rig, which corrects for this
@@ -187,25 +166,28 @@ export function Avatar({
           return node ? [node] : []
         })
         mixer.current = new THREE.AnimationMixer(loaded.scene)
-        void loadMotions(loaded).then((found) => {
+        void loadMotions(loaded, avatarConfig.motions_url).then((found) => {
           if (!cancelled) clips.current = found
         })
 
         setVrm(loaded)
       },
-      () => {
-        if (!cancelled) onError('Could not load the avatar model.')
-      },
-    )
+    ).catch(() => {
+      if (!cancelled) onError('Could not load the avatar model. Check its URL and VRM format.')
+    })
 
     return () => {
       cancelled = true
     }
-  }, [modelUrl, onError, onFramed])
+  }, [modelUrl, avatarConfig, onError, onFramed])
 
   useEffect(() => {
     return () => {
-      if (vrm) VRMUtils.deepDispose(vrm.scene)
+      if (vrm) {
+        mixer.current?.stopAllAction()
+        mixer.current?.uncacheRoot(vrm.scene)
+        VRMUtils.deepDispose(vrm.scene)
+      }
     }
   }, [vrm])
 
@@ -249,6 +231,7 @@ export function Avatar({
   /* eslint-disable react-hooks/immutability */
   useFrame(({ camera }, delta) => {
     if (!vrm) return
+    delta = Math.min(delta, 0.1)
     clock.current += delta
 
     const s = state.current
@@ -358,11 +341,11 @@ export function Avatar({
       // The jaw rides under the vowels as a floor: with every vowel at zero
       // the lips still part slightly, so the mouth line never disappears.
       const shape = mouthShape(mouth)
-      expressions.setValue('aa', shape.aa)
-      expressions.setValue('ih', shape.ih)
-      expressions.setValue('ou', shape.ou)
-      expressions.setValue('ee', shape.ee)
-      expressions.setValue('oh', shape.oh)
+      const timed = mouthCues?.()
+      for (const channel of ['aa', 'ih', 'ou', 'ee', 'oh', 'closed'] as const) {
+        const name = avatarConfig.mouth_map[channel]
+        if (name) expressions.setValue(name, timed ? timed[channel] : channel === 'closed' ? 0 : shape[channel])
+      }
 
       // 'happy' and 'relaxed' are authored as closed-eye expressions on many
       // models, so they are held well below full weight; the others reshape

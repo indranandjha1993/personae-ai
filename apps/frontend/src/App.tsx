@@ -1,5 +1,9 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 
+import { parseCharacters, parseVoices, type Character, type VoiceOption } from './avatar/config'
+import { PixelStreamingStage } from './avatar/PixelStreamingStage'
+import { downloadMetrics } from './diagnostics'
+
 import type { AudioFeatures } from './audio/playback'
 import { visibleCaption } from './caption'
 import './styles.css'
@@ -10,35 +14,92 @@ const AvatarStage = lazy(() =>
   import('./avatar/AvatarStage').then((module) => ({ default: module.AvatarStage })),
 )
 
-interface Character {
-  id: string
-  display_name: string
-}
 
 export function App() {
-  const [character, setCharacter] = useState<Character | null>(null)
+  const [characters, setCharacters] = useState<Character[]>([])
+  const [characterId, setCharacterId] = useState('')
+  const [appearanceId, setAppearanceId] = useState('')
+  const [voiceId, setVoiceId] = useState('default')
+  const [voices, setVoices] = useState<VoiceOption[]>([{ id: 'default', label: 'Configured voice', mode: 'live' }])
+  const [voiceNotice, setVoiceNotice] = useState('')
+  const [quality, setQuality] = useState<'auto' | 'high' | 'low'>('auto')
   const [loadError, setLoadError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     const controller = new AbortController()
     fetch('/api/characters', { signal: controller.signal })
       .then((response) => (response.ok ? response.json() : Promise.reject(new Error('failed'))))
-      .then((body: { characters: Character[] }) => { setCharacter(body.characters[0] ?? null) })
+      .then((body: unknown) => {
+        if (controller.signal.aborted) return
+        const catalogue = parseCharacters(body)
+        const first = catalogue.find((entry) => entry.id === 'bundled/seed') ?? catalogue[0]
+        setCharacters(catalogue)
+        setCharacterId(first?.id ?? '')
+        setAppearanceId(first?.id ?? '')
+        setLoading(false)
+      })
       .catch((error: unknown) => {
-        if (error instanceof Error && error.name === 'AbortError') return
-        setLoadError('Could not reach the backend.')
+        if (controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')) return
+        setLoadError('Could not reach the backend. Please try again.')
+        setLoading(false)
+      })
+    fetch('/api/voices', { signal: controller.signal })
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error('failed'))))
+      .then((body: unknown) => {
+        if (!controller.signal.aborted) {
+          setVoices(parseVoices(body))
+          setVoiceNotice('')
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setVoiceNotice('Voice options unavailable. Using the configured voice.')
       })
     return () => { controller.abort() }
-  }, [])
+  }, [attempt])
 
+  const character = characters.find((entry) => entry.id === characterId)
+  // A hosted experience is never a model for the local browser renderer.
+  const appearance = characters.find((entry) => entry.id === appearanceId && entry.avatar.renderer === 'vrm') ?? character
+  const retry = () => {
+    setLoadError('')
+    setLoading(true)
+    setAttempt((value) => value + 1)
+  }
   return (
     <div className="app">
       <header className="masthead">
         <h1 className="wordmark">{character?.display_name ?? 'Personae'}</h1>
         <p className="tagline">Personae AI</p>
       </header>
+      {loading && <p className="catalogue-state" role="status">Preparing your conversation…</p>}
       {loadError !== '' && <p className="alert" role="alert">{loadError}</p>}
-      {character && <Conversation characterId={character.id} name={character.display_name} />}
+      {!loading && !character && (
+        <div className="catalogue-state">
+          {loadError === '' && <p>No personalities are available yet. Add a character pack to get started.</p>}
+          <button className="text-button" type="button" onClick={retry}>Try again</button>
+        </div>
+      )}
+      {character && appearance && (character.avatar.renderer === 'pixel-streaming'
+        ? <>
+            <label className="hosted-choice">Experience
+              <select value={character.id} onChange={(event) => {
+                setCharacterId(event.target.value)
+                setAppearanceId(event.target.value)
+              }}>
+                {characters.map((entry) => <option value={entry.id} key={entry.id}>{entry.display_name}{entry.avatar.renderer === 'pixel-streaming' ? ' · Hosted avatar' : ' · Browser avatar'}</option>)}
+              </select>
+            </label>
+            <p className="customize-note">This hosted experience manages its own voice and appearance.</p>
+            <PixelStreamingStage avatar={character.avatar} characterId={character.id} />
+          </>
+        : <Conversation key={`${character.id}:${voiceId}`} character={character} appearance={appearance}
+            characters={characters} onCharacterChange={setCharacterId} onAppearanceChange={setAppearanceId}
+            voiceId={voiceId} voices={voices} voiceNotice={voiceNotice} onVoiceChange={setVoiceId}
+            quality={quality} onQualityChange={setQuality} />)}
+      {new URLSearchParams(window.location.search).has('diagnostics') &&
+        <button type="button" onClick={downloadMetrics}>Download measurements</button>}
     </div>
   )
 }
@@ -89,12 +150,30 @@ function useVoiceLight(
   }, [features, ref])
 }
 
-function Conversation({ characterId, name }: { characterId: string; name: string }) {
+interface ConversationProps {
+  character: Character
+  appearance: Character
+  characters: Character[]
+  onCharacterChange: (id: string) => void
+  onAppearanceChange: (id: string) => void
+  voiceId: string
+  voices: VoiceOption[]
+  voiceNotice: string
+  onVoiceChange: (id: string) => void
+  quality: 'auto' | 'high' | 'low'
+  onQualityChange: (quality: 'auto' | 'high' | 'low') => void
+}
+
+function Conversation({ character, appearance, characters, onCharacterChange, onAppearanceChange,
+  voiceId, voices, voiceNotice, onVoiceChange, quality, onQualityChange }: ConversationProps) {
+  const { id: characterId, display_name: name } = character
+  const avatar = appearance.avatar
   const {
+    mouthCues,
     status, transcript, reply, gesture, emotion, detail,
     features, spokenSoFar, turnFinished, turnId, inputLevel,
     cameraStream, cameraOn, toggleCamera, start, stop,
-  } = useConversation(characterId)
+  } = useConversation(characterId, voiceId)
   const active = status !== 'idle' && status !== 'error'
   const stage = useRef<HTMLDivElement>(null)
   useVoiceLight(stage, features)
@@ -108,12 +187,52 @@ function Conversation({ characterId, name }: { characterId: string; name: string
 
   return (
     <section aria-label="Conversation">
+      <details className="customize">
+        <summary>
+          <span className="customize-title">Make it yours</span>
+          <span className="customize-summary">{name} <span aria-hidden="true">/</span> {voices.find((voice) => voice.id === voiceId)?.label ?? 'Configured voice'}</span>
+          <span className="customize-action">Customize <span aria-hidden="true">+</span></span>
+        </summary>
+        <div className="customize-fields">
+          <label>Personality
+            <select value={characterId} disabled={active} onChange={(event) => { onCharacterChange(event.target.value) }} aria-describedby="customize-timing">
+              {characters.map((entry) => <option key={entry.id} value={entry.id}>{entry.display_name}{entry.avatar.renderer === 'pixel-streaming' ? ' · Hosted experience' : ''}</option>)}
+            </select>
+          </label>
+          <label>Appearance
+            <select value={appearance.id} onChange={(event) => { onAppearanceChange(event.target.value) }} aria-describedby="appearance-note">
+              {characters.filter((entry) => entry.avatar.renderer === 'vrm').map((entry) => <option key={entry.id} value={entry.id}>{entry.display_name}</option>)}
+            </select>
+          </label>
+          <label>Voice
+            <select value={voiceId} disabled={active} onChange={(event) => { onVoiceChange(event.target.value) }} aria-describedby="customize-timing">
+              {voices.map((voice) => <option key={voice.id} value={voice.id}>{voice.mode === 'mock' ? 'Demo voice' : voice.label}</option>)}
+            </select>
+          </label>
+          <label>Render quality
+            <select value={quality} onChange={(event) => {
+              const value = event.target.value
+              if (value === 'auto' || value === 'high' || value === 'low') onQualityChange(value)
+            }}>
+              <option value="auto">Auto</option><option value="high">High</option><option value="low">Low</option>
+            </select>
+          </label>
+        </div>
+        <p className="customize-note" id="customize-timing">{active
+          ? 'End this conversation to change personality or voice. Appearance and quality can change anytime.'
+          : 'Changing personality or voice starts a fresh conversation. Appearance and quality keep your conversation.'}</p>
+        <p className="customize-note" id="appearance-note">{characters.filter((entry) => entry.avatar.model_url === appearance.avatar.model_url).length > 1
+          ? 'Some personalities share the same avatar. Personality and appearance are independent.'
+          : 'Appearance is independent of personality.'} Auto balances clarity and device performance.</p>
+        {voiceNotice !== '' && <p className="customize-note" role="status">{voiceNotice}</p>}
+        {voices.find((voice) => voice.id === voiceId)?.mode === 'mock' && <p className="customize-note">Demo voice plays sample audio, not generated speech.</p>}
+      </details>
       <div className="stage-frame" data-state={status} ref={stage}>
         <div className="stage-light stage-light--idle" />
         <div className="stage-light stage-light--listen" />
         <div className="stage-light stage-light--speak" />
-        <Suspense fallback={null}>
-          <AvatarStage gesture={gesture} emotion={emotion} activity={status} features={features} />
+        <Suspense fallback={<p className="stage-loading" role="status">Loading avatar…</p>}>
+          <AvatarStage avatar={avatar} quality={quality} mouthCues={mouthCues} gesture={gesture} emotion={emotion} activity={status} features={features} />
         </Suspense>
         <div className="stage-grain" />
         {cameraStream && <SelfView stream={cameraStream} />}
@@ -158,7 +277,7 @@ function Conversation({ characterId, name }: { characterId: string; name: string
 
       {!active && (
         <p className="hint">
-          {name}&apos;s here — she answers when you pause. Talk over her to cut in.
+          {name}&apos;s here. Answers when you pause; interrupt anytime.
         </p>
       )}
       {detail !== '' && <p className="alert" role="alert">{detail}</p>}

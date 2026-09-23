@@ -13,6 +13,19 @@ import pytest
 @pytest.fixture(autouse=True)
 def _isolate_environment(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     for name in (
+        "PERSONAE_LOCAL_TTS_BASE_URL",
+        "PERSONAE_LOCAL_TTS_API_KEY",
+        "PERSONAE_LOCAL_TTS_MODEL",
+        "PERSONAE_LOCAL_TTS_VOICE",
+        "PERSONAE_LOCAL_TTS_VOICES",
+        "PERSONAE_LIP_SYNC",
+        "PERSONAE_RHUBARB_PATH",
+        "PERSONAE_RHUBARB_RECOGNIZER",
+        "PERSONAE_TTS_PROVIDER",
+        "PERSONAE_ELEVENLABS_API_KEY",
+        "PERSONAE_ELEVENLABS_VOICE",
+        "PERSONAE_ELEVENLABS_MODEL",
+        "PERSONAE_LLM_VISION",
         "PERSONAE_STT_MODE",
         "PERSONAE_LLM_MODE",
         "PERSONAE_TTS_MODE",

@@ -500,8 +500,17 @@ async def test_the_voice_is_connected_once_for_the_whole_conversation() -> None:
     tts = CountingTts()
     llm = SlowLlm(["One thing. ", "Then another."], 0.0)
     session = LiveSession(_character(), ScriptedStt(["a", "b"]), llm, tts)
-    await _offer_turns(session, 2)
-    await _drain(session)
+    # Feed the second turn after the first finishes. Preloading both turns
+    # exercises barge-in and depends on task scheduling rather than reuse.
+    await session.offer(b"\x10\x20" * 40)
+    replies = 0
+    async for message in session.run():
+        if message.model_dump()["type"] == "reply":
+            replies += 1
+            if replies == 1:
+                await session.offer(b"\x30\x40" * 40)
+            else:
+                await session.close_input()
 
     assert tts.opened == 1
     assert len(tts.said) == 4, "two sentences per turn, two turns"

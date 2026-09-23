@@ -1,3 +1,5 @@
+import type { CharacterCue, VisemeCue } from './audio/speech-timeline'
+
 /**
  * The wire protocol, mirroring the backend's typed messages.
  *
@@ -66,7 +68,29 @@ export interface DoneMessage {
   type: 'done'
 }
 
+export interface SpeechStartMessage { type: 'speech_start'; utterance_id: string }
+export interface SpeechTimingMessage {
+  type: 'speech_timing'; utterance_id: string; alignment: CharacterCue[]; visemes: VisemeCue[]
+}
+export interface MetricsMessage { type: 'metrics'; reply_id: string; values: Record<string, number> }
+
+function finite(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+}
+function characterCue(value: unknown): value is CharacterCue {
+  return isRecord(value) && finite(value['start']) && finite(value['end']) &&
+    value['end'] >= value['start'] && typeof value['text'] === 'string'
+}
+function visemeCue(value: unknown): value is VisemeCue {
+  return isRecord(value) && finite(value['start']) && finite(value['end']) &&
+    value['end'] >= value['start'] && finite(value['weight']) && value['weight'] <= 1 &&
+    typeof value['value'] === 'string' && ['aa', 'ih', 'ou', 'ee', 'oh', 'closed'].includes(value['value'])
+}
+
 export type ServerMessage =
+  | SpeechStartMessage
+  | SpeechTimingMessage
+  | MetricsMessage
   | ReadyMessage
   | SpeakingMessage
   | TranscriptMessage
@@ -88,6 +112,26 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
   if (!isRecord(raw)) return null
 
   switch (raw['type']) {
+    case 'speech_start':
+      return typeof raw['utterance_id'] === 'string'
+        ? { type: 'speech_start', utterance_id: raw['utterance_id'] } : null
+    case 'speech_timing': {
+      const alignment: unknown = raw['alignment']
+      const visemes: unknown = raw['visemes']
+      if (typeof raw['utterance_id'] !== 'string' || !Array.isArray(alignment) ||
+        !Array.isArray(visemes) || alignment.length > 4096 || visemes.length > 4096 ||
+        !alignment.every(characterCue) || !visemes.every(visemeCue)) return null
+      return { type: 'speech_timing', utterance_id: raw['utterance_id'], alignment, visemes }
+    }
+    case 'metrics': {
+      if (typeof raw['reply_id'] !== 'string' || !isRecord(raw['values'])) return null
+      const values: Record<string, number> = {}
+      for (const [name, value] of Object.entries(raw['values'])) {
+        if (!finite(value)) return null
+        values[name] = value
+      }
+      return { type: 'metrics', reply_id: raw['reply_id'], values }
+    }
     case 'ready':
       return typeof raw['sample_rate'] === 'number' && typeof raw['channels'] === 'number'
         ? { type: 'ready', sample_rate: raw['sample_rate'], channels: raw['channels'] }

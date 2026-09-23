@@ -43,6 +43,33 @@ def build_stt(settings: Settings) -> SttProvider:
 
 
 def build_tts(settings: Settings) -> TtsProvider:
+    provider = _build_tts(settings)
+    if settings.lip_sync == "rhubarb" and not isinstance(provider, MockTts):
+        from personae.lip_alignment import AlignedTts, Rhubarb
+
+        return AlignedTts(provider, Rhubarb(settings.rhubarb_path, settings.rhubarb_recognizer))
+    return provider
+
+
+def _build_tts(settings: Settings) -> TtsProvider:
+    if settings.tts_provider == "local":
+        if not settings.local_tts_base_url:
+            return MockTts()
+        from personae.providers.local_tts import LocalTts
+
+        return LocalTts(settings.local_tts_base_url, settings.local_tts_model,
+                        settings.local_tts_voice, settings.local_tts_api_key)
+    if settings.tts_provider == "mock":
+        return MockTts()
+    if settings.tts_provider == "elevenlabs":
+        if not settings.elevenlabs_api_key:
+            return MockTts()
+        from personae.providers.elevenlabs import ElevenLabsTts
+
+        _require(settings.elevenlabs_voice, "ELEVENLABS_VOICE")
+        return ElevenLabsTts(
+            settings.elevenlabs_api_key, settings.elevenlabs_model, settings.elevenlabs_voice
+        )
     if not settings.deepgram_api_key:
         return MockTts()
 
@@ -86,6 +113,7 @@ def build_llm(settings: Settings) -> LlmProvider:
         base_url=settings.llm_base_url or "",
         api_key=settings.llm_api_key,
         model=settings.llm_model,
+        vision=settings.llm_vision,
     )
 
 

@@ -30,7 +30,7 @@ describe('App', () => {
     expect(
       await screen.findByRole('button', { name: 'Start conversation' }),
     ).toBeInTheDocument()
-    expect(screen.getByText(/talk over her to cut in/i)).toBeInTheDocument()
+    expect(screen.getByText(/Answers when you pause; interrupt anytime/i)).toBeInTheDocument()
   })
 
   it('offers a camera the conversation can see through', async () => {
@@ -64,4 +64,17 @@ describe('App', () => {
     render(<App />)
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not reach the backend')
   })
+})
+
+it('uses the hosted player without starting a second local conversation', async () => {
+  const { DEFAULT_AVATAR } = await import('./avatar/config')
+  vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({
+    characters: [{ id: 'local/person', display_name: 'Person', avatar: {
+      ...DEFAULT_AVATAR, renderer: 'pixel-streaming', player_url: 'https://player.example/session',
+    } }],
+  }) })))
+  render(<App />)
+  const frame = await screen.findByTitle('Live avatar')
+  expect(frame).toHaveAttribute('src', 'https://player.example/session?character=local%2Fperson')
+  expect(screen.queryByRole('button', { name: 'Start conversation' })).not.toBeInTheDocument()
 })

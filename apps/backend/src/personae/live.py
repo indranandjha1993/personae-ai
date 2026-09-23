@@ -6,11 +6,13 @@ import logging
 import re
 from collections import deque
 from collections.abc import AsyncGenerator, AsyncIterator
+from time import perf_counter
+from uuid import uuid4
 
 from personae import expression
 from personae.conversation import History, Turn
 from personae.packs.models import Character
-from personae.protocol import ServerMessage
+from personae.protocol import MetricsMessage, ServerMessage, SpeechStartMessage, SpeechTimingMessage
 from personae.providers.base import (
     Heard,
     LlmProvider,
@@ -27,6 +29,7 @@ from personae.speech import (
     strip_farewell,
     strip_gesture_marks,
 )
+from personae.speech_events import SpeechChunk
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +85,10 @@ class _Reply:
         self.transcript = transcript
         self.frame = frame
         self.spoken = ""
+        self.id = uuid4().hex
+        self.started = perf_counter()
+        self.metrics: dict[str, float] = {}
+
         self.outbound: asyncio.Queue[ServerMessage | None] = asyncio.Queue(maxsize=OUTBOUND_BUFFER)
         self.task: asyncio.Task[None] | None = None
 
@@ -311,6 +318,10 @@ class LiveSession:
         outbound = reply.outbound
         character = self._character
         vocabulary = character.expression.gestures
+
+        def mark(name: str) -> None:
+            reply.metrics.setdefault(name, (perf_counter() - reply.started) * 1000)
+
         try:
             speaker = await self._voice()
             # Where a sentence falls in the reply, and whether the one before
@@ -332,6 +343,7 @@ class LiveSession:
                 gesture, emotion = expression.infer(
                     speakable, character, requested=marked, beat=beat, after_mark=after_mark
                 )
+                mark("first_speakable_ms")
                 opening = beat == 0
                 beat += 1
                 after_mark = bool(marked)
@@ -341,6 +353,8 @@ class LiveSession:
                 await outbound.put(ServerMessage.expression(gesture=gesture, emotion=emotion))
                 # Announced before its audio, so the caption can follow her
                 # voice rather than arriving in one block at the end.
+                utterance_id = f"{reply.id}:{beat}"
+                await outbound.put(SpeechStartMessage(utterance_id=utterance_id))
                 await outbound.put(ServerMessage.speaking(speakable))
                 # Her pace follows her mood: a shade slower when serious, a
                 # shade quicker when amused. Never on the opening line: a pace
@@ -353,25 +367,64 @@ class LiveSession:
                 lines = speaker.say(speakable, rate)
                 try:
                     async for chunk in lines:
-                        await outbound.put(ServerMessage.audio(chunk))
+                        if isinstance(chunk, SpeechChunk):
+                            if chunk.alignment or chunk.visemes:
+                                await outbound.put(
+                                    SpeechTimingMessage(
+                                        utterance_id=utterance_id,
+                                        alignment=chunk.alignment,
+                                        visemes=chunk.visemes,
+                                    )
+                                )
+                            pcm = chunk.pcm
+                        else:
+                            pcm = chunk
+                        if pcm:
+                            mark("first_audio_ms")
+                            await outbound.put(ServerMessage.audio(pcm))
                 finally:
                     if isinstance(lines, AsyncGenerator):
                         await lines.aclose()
 
             async def write(frame: bytes | None) -> None:
-                # Each sentence is spoken as it arrives, so she starts on the
-                # first while the model is still writing the rest.
-                sentences = SentenceBuffer()
-                async for fragment in self._llm.respond(
-                    _prompt_for(character.persona.prompt, frame is not None),
-                    reply.transcript,
-                    self._history.messages(),
-                    frame,
-                ):
-                    reply.spoken += fragment
-                    for sentence in sentences.feed(fragment):
-                        await say(sentence)
-                await say(sentences.flush())
+                # Read tokens independently while speech is synthesised. Bound the
+                # queue so a slow consumer cannot accumulate an unbounded reply.
+                pending: asyncio.Queue[str | None] = asyncio.Queue(maxsize=4)
+
+                async def read_text() -> None:
+                    sentences = SentenceBuffer()
+                    fragments = self._llm.respond(
+                        _prompt_for(character.persona.prompt, frame is not None),
+                        reply.transcript,
+                        self._history.messages(),
+                        frame,
+                    )
+                    try:
+                        async for fragment in fragments:
+                            if fragment:
+                                mark("first_token_ms")
+                            reply.spoken += fragment
+                            for sentence in sentences.feed(fragment):
+                                await pending.put(sentence)
+                        await pending.put(sentences.flush())
+                        await pending.put(None)
+                    finally:
+                        if isinstance(fragments, AsyncGenerator):
+                            await fragments.aclose()
+
+                async def speak_text() -> None:
+                    while (text := await pending.get()) is not None:
+                        await say(text)
+
+                reader = asyncio.create_task(read_text())
+                speaker_task = asyncio.create_task(speak_text())
+                try:
+                    await asyncio.gather(reader, speaker_task)
+                finally:
+                    # gather alone does not cancel a sibling when one fails.
+                    reader.cancel()
+                    speaker_task.cancel()
+                    await asyncio.gather(reader, speaker_task, return_exceptions=True)
 
             await write(reply.frame)
 
@@ -393,6 +446,9 @@ class LiveSession:
             ending = farewell_marked(reply.spoken)
             reply.spoken = strip_gesture_marks(strip_farewell(reply.spoken), vocabulary)
             # The caption follows the speech rather than preceding it.
+            mark("generation_done_ms")
+            await outbound.put(MetricsMessage(reply_id=reply.id, values=reply.metrics))
+            logger.info("reply_metrics reply_id=%s values=%s", reply.id, reply.metrics)
             await outbound.put(ServerMessage.reply(reply.spoken))
 
             # After the audio, so her goodbye is never cut off mid-word.

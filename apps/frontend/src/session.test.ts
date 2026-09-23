@@ -63,3 +63,19 @@ describe('the shape of what goes over the wire', () => {
     expect(socket.sent[0]).toBe(JSON.stringify({ type: 'interrupt' }))
   })
 })
+
+it('delivers interrupts even when audio has filled the send buffer', () => {
+  const { socket, session } = withSocket()
+  socket.bufferedAmount = 2_000_000
+  session.interrupt()
+  expect(socket.sent).toContain(JSON.stringify({ type: 'interrupt' }))
+  session.close()
+})
+
+it('does not send delayed frames after the session closes', () => {
+  const { socket, session } = withSocket()
+  session.close()
+  session.sendAudio(new Int16Array([1, 2]))
+  session.interrupt()
+  expect(socket.sent).toHaveLength(0)
+})

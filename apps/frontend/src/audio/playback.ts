@@ -150,8 +150,8 @@ export class PcmPlayer {
   }
 
   /** Schedule one chunk of 16-bit PCM immediately after whatever precedes it. */
-  enqueue(samples: Int16Array): void {
-    if (samples.length === 0) return
+  enqueue(samples: Int16Array): number {
+    if (samples.length === 0) return this.nextStartTime
 
     const buffer = this.context.createBuffer(1, samples.length, this.sourceSampleRate)
     buffer.getChannelData(0).set(this.toFloat(samples))
@@ -170,6 +170,7 @@ export class PcmPlayer {
 
     this.sources.add(source)
     source.onended = () => this.sources.delete(source)
+    return startAt
   }
 
   /** Convert 16-bit samples to the normalised floats Web Audio expects. */

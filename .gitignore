@@ -18,6 +18,7 @@ node_modules/
 .vite/
 coverage/
 *.tsbuildinfo
+.playwright-cli/
 
 # --- Environment / secrets ---
 .env

@@ -271,7 +271,7 @@ makes all of this cleaner.
 
 Switch the camera on and a still from the moment you spoke is attached to that turn, so she
 can answer questions about what is in front of you. This needs a language endpoint that
-accepts images: see `PERSONAE_LLM_WIRE` in `.env.example`.
+accepts images (OpenAI-compatible endpoints use `PERSONAE_LLM_VISION=true`): see `PERSONAE_LLM_WIRE` in `.env.example`.
 
 An interrupted reply is remembered as only what was actually said aloud, so her next answer
 never refers to words you did not hear. History is a bounded window of recent turns.
@@ -307,7 +307,7 @@ supply one yourself:
 
 1. Get a `.vrm` model -- [VRoid Hub](https://hub.vroid.com/) has free avatars, and
    [VRoid Studio](https://vroid.com/en/studio) lets you make your own.
-2. Save it as `apps/frontend/public/avatar.vrm`.
+2. Save it as `apps/frontend/public/models/seed-san.vrm`.
 3. Reload the page.
 
 Until then the viewport explains what is missing and the conversation still works. The 3D
@@ -354,3 +354,13 @@ nothing that makes the project unrunnable without API keys.
 ## License
 
 [MIT](LICENSE) © Indra Nand Jha
+
+
+## Rendering and speech upgrades
+
+OpenRouter works through the existing backend adapter. Optional ElevenLabs speech,
+audio-derived Rhubarb mouth timing, configurable per-character VRM assets, a hosted
+Pixel Streaming player boundary, and downloadable latency measurements are described
+in [docs/rendering.md](docs/rendering.md). Default development still runs without
+credentials, avatar files, Unreal, or Rhubarb. Live photorealism and provider latency
+must be measured with supplied assets and deployments.
